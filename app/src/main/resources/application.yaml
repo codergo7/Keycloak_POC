@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: iam-poc-app
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+server:
+  port: 8080
