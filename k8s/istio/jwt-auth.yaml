@@ -24,58 +24,50 @@ spec:
   selector:
     matchLabels:
       istio: ingressgateway
-  action: ALLOW
-  rules:
 
-    # Keycloak must be publicly reachable for OIDC/login.
+  action: ALLOW
+
+  rules:
+    # Keycloak
     - to:
         - operation:
             hosts:
               - "keycloak.localhost"
               - "keycloak.localhost:*"
 
-    # oauth2-proxy is responsible for authentication on this host.
+    # oauth2-proxy
     - to:
         - operation:
             hosts:
               - "app.localhost"
               - "app.localhost:*"
 
-    # Public API.
+    # Public API
     - to:
         - operation:
-            hosts:
-              - "api.localhost"
-              - "api.localhost:*"
             paths:
               - "/api/public"
               - "/actuator/health"
 
-    # Any authenticated user.
+    # Any authenticated POC user
     - from:
         - source:
             requestPrincipals:
               - "*"
       to:
         - operation:
-            hosts:
-              - "api.localhost"
-              - "api.localhost:*"
             paths:
               - "/api/user"
               - "/api/whoami"
               - "/api/headers"
 
-    # Only users whose JWT contains realm role "admin".
+    # Admin only
     - from:
         - source:
             requestPrincipals:
               - "*"
       to:
         - operation:
-            hosts:
-              - "api.localhost"
-              - "api.localhost:*"
             paths:
               - "/api/admin"
       when:
