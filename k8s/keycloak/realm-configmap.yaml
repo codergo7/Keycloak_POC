@@ -3,16 +3,29 @@ kind: ConfigMap
 metadata:
   name: keycloak-realm
   namespace: iam
+
 data:
   realm.json: |
     {
       "realm": "poc",
       "enabled": true,
       "displayName": "IAM POC",
+
       "registrationAllowed": true,
       "resetPasswordAllowed": true,
       "rememberMe": true,
       "verifyEmail": false,
+
+      "defaultDefaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "roles",
+        "web-origins",
+        "groups",
+        "app-audience"
+      ],
+
       "roles": {
         "realm": [
           {
@@ -39,6 +52,7 @@ data:
           }
         ]
       },
+
       "groups": [
         {
           "name": "engineering",
@@ -61,7 +75,207 @@ data:
           ]
         }
       ],
+
       "clientScopes": [
+        {
+          "name": "basic",
+          "description": "Basic OIDC claims",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "false",
+            "display.on.consent.screen": "false"
+          },
+          "protocolMappers": [
+            {
+              "name": "subject (sub)",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-sub-mapper",
+              "consentRequired": false,
+              "config": {
+                "access.token.claim": "true"
+              }
+            }
+          ]
+        },
+        {
+          "name": "profile",
+          "description": "OpenID Connect scope for profile claims",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "true",
+            "display.on.consent.screen": "true",
+            "consent.screen.text": "${profileScopeConsentText}"
+          },
+          "protocolMappers": [
+            {
+              "name": "full name",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-full-name-mapper",
+              "consentRequired": false,
+              "config": {
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            },
+            {
+              "name": "given name",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-property-mapper",
+              "consentRequired": false,
+              "config": {
+                "user.attribute": "firstName",
+                "claim.name": "given_name",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            },
+            {
+              "name": "family name",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-property-mapper",
+              "consentRequired": false,
+              "config": {
+                "user.attribute": "lastName",
+                "claim.name": "family_name",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            },
+            {
+              "name": "username",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-property-mapper",
+              "consentRequired": false,
+              "config": {
+                "user.attribute": "username",
+                "claim.name": "preferred_username",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "email",
+          "description": "OpenID Connect scope for email claims",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "true",
+            "display.on.consent.screen": "true",
+            "consent.screen.text": "${emailScopeConsentText}"
+          },
+          "protocolMappers": [
+            {
+              "name": "email",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-property-mapper",
+              "consentRequired": false,
+              "config": {
+                "user.attribute": "email",
+                "claim.name": "email",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            },
+            {
+              "name": "email verified",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-property-mapper",
+              "consentRequired": false,
+              "config": {
+                "user.attribute": "emailVerified",
+                "claim.name": "email_verified",
+                "jsonType.label": "boolean",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            }
+          ]
+        },
+
+        {
+          "name": "roles",
+          "description": "OpenID Connect scope for realm and client roles",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "false",
+            "display.on.consent.screen": "true",
+            "consent.screen.text": "${rolesScopeConsentText}"
+          },
+          "protocolMappers": [
+            {
+              "name": "realm roles",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-realm-role-mapper",
+              "consentRequired": false,
+              "config": {
+                "multivalued": "true",
+                "user.attribute": "foo",
+                "claim.name": "realm_access.roles",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            },
+            {
+              "name": "client roles",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-client-role-mapper",
+              "consentRequired": false,
+              "config": {
+                "multivalued": "true",
+                "user.attribute": "foo",
+                "claim.name": "resource_access.${client_id}.roles",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            },
+            {
+              "name": "audience resolve",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-audience-resolve-mapper",
+              "consentRequired": false,
+              "config": {}
+            }
+          ]
+        },
+
+        {
+          "name": "web-origins",
+          "description": "OpenID Connect scope for allowed web origins",
+          "protocol": "openid-connect",
+          "attributes": {
+            "include.in.token.scope": "false",
+            "display.on.consent.screen": "false"
+          },
+          "protocolMappers": [
+            {
+              "name": "allowed web origins",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-allowed-origins-mapper",
+              "consentRequired": false,
+              "config": {
+                "access.token.claim": "true",
+                "id.token.claim": "false"
+              }
+            }
+          ]
+        },
+
         {
           "name": "groups",
           "description": "Add Keycloak groups to tokens",
@@ -86,12 +300,14 @@ data:
             }
           ]
         },
+
         {
           "name": "app-audience",
           "description": "Add spring-api to aud claim",
           "protocol": "openid-connect",
           "attributes": {
-            "include.in.token.scope": "true"
+            "include.in.token.scope": "false",
+            "display.on.consent.screen": "false"
           },
           "protocolMappers": [
             {
@@ -109,6 +325,7 @@ data:
           ]
         }
       ],
+
       "clients": [
         {
           "clientId": "spring-api",
@@ -122,6 +339,7 @@ data:
           "serviceAccountsEnabled": false,
           "authorizationServicesEnabled": false
         },
+
         {
           "clientId": "cli-client",
           "name": "CLI test client",
@@ -133,6 +351,7 @@ data:
           "directAccessGrantsEnabled": true,
           "serviceAccountsEnabled": true,
           "defaultClientScopes": [
+            "basic",
             "profile",
             "email",
             "roles",
@@ -141,6 +360,7 @@ data:
             "app-audience"
           ]
         },
+
         {
           "clientId": "oauth2-proxy",
           "name": "oauth2-proxy",
@@ -157,6 +377,7 @@ data:
             "http://app.localhost:8080"
           ],
           "defaultClientScopes": [
+            "basic",
             "profile",
             "email",
             "roles",
@@ -166,6 +387,7 @@ data:
           ]
         }
       ],
+
       "users": [
         {
           "username": "alice",
@@ -189,6 +411,7 @@ data:
             "/engineering/platform"
           ]
         },
+
         {
           "username": "bob",
           "enabled": true,
@@ -208,6 +431,7 @@ data:
             "premium"
           ]
         },
+
         {
           "username": "admin",
           "enabled": true,
