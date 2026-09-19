@@ -11,13 +11,12 @@ import java.util.*;
 @RestController
 public class ApiController {
 
-    @GetMapping({"/", "/api/public"})
+    @GetMapping({ "/", "/api/public" })
     public Map<String, Object> publicEndpoint() throws Exception {
         return Map.of(
                 "message", "public endpoint reached",
                 "time", Instant.now().toString(),
-                "pod", InetAddress.getLocalHost().getHostName()
-        );
+                "pod", InetAddress.getLocalHost().getHostName());
     }
 
     @GetMapping("/api/user")
@@ -58,5 +57,12 @@ public class ApiController {
             headers.put(name, value);
         }
         return headers;
+    }
+
+    @GetMapping("/api/internal")
+    public Map<String, Object> internal() {
+        return Map.of(
+                "message", "internal service endpoint reached",
+                "time", Instant.now().toString());
     }
 }

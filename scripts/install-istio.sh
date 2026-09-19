@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ISTIO_VERSION="${ISTIO_VERSION:-1.30.4}"
+ISTIO_VERSION="${ISTIO_VERSION:-1.31.0}"
 
 if ! command -v istioctl >/dev/null 2>&1; then
   echo "istioctl not found; downloading Istio ${ISTIO_VERSION} to .tools/"

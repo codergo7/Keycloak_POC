@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: service-a
+  namespace: service-a
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-a
+  namespace: service-a
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: service-a
+
+  template:
+    metadata:
+      labels:
+        app: service-a
+
+    spec:
+      serviceAccountName: service-a
+
+      containers:
+        - name: service-a
+          image: curlimages/curl:8.12.1
+
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              echo "Service A started"
+              sleep infinity

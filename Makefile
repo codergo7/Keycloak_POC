@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
 CLUSTER ?= iam-poc
-ISTIO_VERSION ?= 1.30.4
+ISTIO_VERSION ?= 1.31.0
 APP_IMAGE ?= iam-poc-app:dev
 
 .PHONY: help prereqs cluster istio namespaces build load deploy wait up status \
@@ -64,6 +64,7 @@ deploy: namespaces load
 	kubectl -n iam rollout status deploy/postgres --timeout=180s
 	kubectl -n iam rollout status deploy/keycloak --timeout=300s
 	kubectl apply -f k8s/istio/jwt-auth.yaml
+	kubectl apply -f k8s/service-a/service-a.yaml
 
 wait:
 	kubectl -n iam rollout status deploy/postgres --timeout=180s
