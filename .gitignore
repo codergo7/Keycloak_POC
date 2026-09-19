@@ -1,1 +1,17 @@
 /.vscode/
+
+
+
+# =========================
+# Java
+# =========================
+*.class
+*.log
+*.jar
+*.war
+*.ear
+
+# Maven
+target/
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
