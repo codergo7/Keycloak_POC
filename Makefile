@@ -72,7 +72,7 @@ wait:
 	kubectl -n iam rollout status deploy/oauth2-proxy --timeout=180s
 	kubectl -n demo rollout status deploy/spring-app --timeout=180s
 
-up: istio deploy wait
+up: istio deploy wait observability
 	@echo
 	@echo "POC is ready."
 	@echo "Keycloak:    http://keycloak.localhost:8080  admin/admin"
@@ -131,3 +131,6 @@ clean:
 	kind delete cluster --name "$(CLUSTER)"
 
 reset: clean up
+
+observability:
+	./scripts/install-observability.sh
