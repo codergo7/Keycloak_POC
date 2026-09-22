@@ -12,3 +12,8 @@ SPRING_POD=$(kubectl get pod -n demo \
 
 istioctl x describe pod "$SPRING_POD" -n demo
 ```
+
+
+```bash
+istioctl dashboard kiali
+```
