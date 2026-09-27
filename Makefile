@@ -43,6 +43,7 @@ cluster: prereqs
 
 istio: cluster
 	ISTIO_VERSION="$(ISTIO_VERSION)" ./scripts/install-istio.sh
+	kubectl apply -f k8s/istio/ingress-authorization.yaml
 
 namespaces:
 	kubectl apply -f k8s/base/namespaces.yaml
@@ -57,6 +58,7 @@ deploy: namespaces load
 	kubectl apply -f k8s/keycloak/postgres.yaml
 	kubectl apply -f k8s/keycloak/realm-configmap.yaml
 	kubectl apply -f k8s/keycloak/keycloak.yaml
+	kubectl -n iam create serviceaccount oauth2-proxy
 	kubectl apply -f k8s/oauth2-proxy/oauth2-proxy.yaml
 	kubectl apply -f k8s/app/app.yaml
 	kubectl apply -f k8s/istio/gateway.yaml

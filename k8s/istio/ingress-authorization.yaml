@@ -1,0 +1,68 @@
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: ingress-authorization
+  namespace: istio-system
+spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway
+
+  action: ALLOW
+
+  rules:
+    # 1. Keycloak: allow browser login and admin console
+    - to:
+        - operation:
+            hosts:
+              - "keycloak.localhost"
+              - "keycloak.localhost:*"
+
+    # 2. OAuth2-Proxy: allow browser authentication
+    - to:
+        - operation:
+            hosts:
+              - "app.localhost"
+              - "app.localhost:*"
+
+    # 3. Public API: no JWT required
+    - to:
+        - operation:
+            hosts:
+              - "api.localhost"
+              - "api.localhost:*"
+            paths:
+              - "/api/public"
+              - "/actuator/health"
+
+    # 4. Protected API: any authenticated user
+    - from:
+        - source:
+            requestPrincipals:
+              - "*"
+      to:
+        - operation:
+            hosts:
+              - "api.localhost"
+              - "api.localhost:*"
+            paths:
+              - "/api/user"
+              - "/api/whoami"
+              - "/api/headers"
+
+    # 5. Admin API: authenticated user with admin role
+    - from:
+        - source:
+            requestPrincipals:
+              - "*"
+      to:
+        - operation:
+            hosts:
+              - "api.localhost"
+              - "api.localhost:*"
+            paths:
+              - "/api/admin"
+      when:
+        - key: request.auth.claims[realm_access][roles]
+          values:
+            - "admin"

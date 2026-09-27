@@ -36,6 +36,7 @@ spec:
       labels:
         app: oauth2-proxy
     spec:
+      serviceAccountName: oauth2-proxy
       containers:
         - name: oauth2-proxy
           image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.3
@@ -59,6 +60,7 @@ spec:
             - --upstream=http://spring-app.demo.svc.cluster.local:8080
             - --pass-access-token=true
             - --pass-authorization-header=true
+            - --pass-host-header=false
             - --set-xauthrequest=true
             - --skip-provider-button=true
           env:

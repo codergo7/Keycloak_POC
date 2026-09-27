@@ -28,4 +28,7 @@ kubectl rollout status deployment/kiali \
 kubectl rollout status deployment/grafana \
   -n istio-system --timeout=180s
 
+kubectl apply -f k8s/observability/telemetry.yaml
+
 echo "Observability stack installed."
+

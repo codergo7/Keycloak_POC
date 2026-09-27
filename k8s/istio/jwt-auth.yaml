@@ -18,63 +18,58 @@ spec:
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: ingress-authorization
-  namespace: istio-system
+  name: spring-workload-authorization
+  namespace: demo
 spec:
   selector:
     matchLabels:
-      istio: ingressgateway
+      app: spring-app
 
   action: ALLOW
 
   rules:
-    # Keycloak
-    - to:
-        - operation:
-            hosts:
-              - "keycloak.localhost"
-              - "keycloak.localhost:*"
-
-    # oauth2-proxy
-    - to:
-        - operation:
-            hosts:
-              - "app.localhost"
-              - "app.localhost:*"
-
-    # Public API
-    - to:
-        - operation:
-            paths:
-              - "/api/public"
-              - "/actuator/health"
-
-    # Any authenticated POC user
+    # Service A -> Spring Boot
     - from:
         - source:
-            requestPrincipals:
-              - "*"
+            principals:
+              - cluster.local/ns/service-a/sa/service-a
+      to:
+        - operation:
+            methods:
+              - GET
+            paths:
+              - /api/internal
+
+    # Istio Ingress Gateway -> Spring Boot
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account
       to:
         - operation:
             paths:
-              - "/api/user"
-              - "/api/whoami"
-              - "/api/headers"
+              - /api/public
+              - /api/user
+              - /api/whoami
+              - /api/headers
+              - /api/admin
+              - /actuator/health
 
-    # Admin only
+    # OAuth2-Proxy -> Spring Boot
     - from:
         - source:
-            requestPrincipals:
-              - "*"
+            principals:
+              - cluster.local/ns/iam/sa/oauth2-proxy
       to:
         - operation:
+            methods:
+              - GET
             paths:
-              - "/api/admin"
-              - "/admin"
-      when:
-        - key: request.auth.claims[realm_access][roles]
-          values:
-            - "admin"
+              - /
+              - /api/public
+              - /api/user
+              - /api/whoami
+              - /api/headers         
 ---
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
