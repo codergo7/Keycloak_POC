@@ -63,6 +63,7 @@ spec:
             - --pass-host-header=false
             - --set-xauthrequest=true
             - --skip-provider-button=true
+            - --set-xauthrequest=false
           env:
             - name: CLIENT_SECRET
               valueFrom:
