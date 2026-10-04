@@ -80,3 +80,50 @@ spec:
               - "/api/headers"
               - "/api/admin"
               - "/actuator/health"
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/iam/sa/oauth2-proxy
+      to:
+        - operation:
+            methods:
+              - GET
+            paths:
+              - /
+              - /api/public
+              - /api/user
+              - /api/whoami
+              - /api/headers              
+    # - from:
+    #     - source:
+    #         requestPrincipals:
+    #           - "*"
+    #   to:
+    #     - operation:
+    #         hosts:
+    #           - "api.localhost"
+    #           - "api.localhost:*"
+    #         paths:
+    #           - "/api/admin"
+    #   when:
+    #     - key: request.auth.claims[realm_access][roles]
+    #       values:
+    #         - "admin"
+    # - from:
+    #     - source:
+    #         requestPrincipals:
+    #           - "*"
+    #   to:
+    #     - operation:
+    #         hosts:
+    #           - "api.localhost"
+    #           - "api.localhost:*"
+    #         paths:
+    #           - /api/public
+    #           - /api/user
+    #           - /api/whoami
+    #           - /api/headers  
+    #   when:
+    #     - key: request.auth.claims[realm_access][roles]
+    #       values:
+    #         - "user"                           

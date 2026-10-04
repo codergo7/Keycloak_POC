@@ -3,19 +3,16 @@ kind: ConfigMap
 metadata:
   name: keycloak-realm
   namespace: iam
-
 data:
   realm.json: |
     {
       "realm": "poc",
       "enabled": true,
       "displayName": "IAM POC",
-
       "registrationAllowed": true,
       "resetPasswordAllowed": true,
       "rememberMe": true,
       "verifyEmail": false,
-
       "defaultDefaultClientScopes": [
         "basic",
         "profile",
@@ -25,7 +22,6 @@ data:
         "groups",
         "app-audience"
       ],
-
       "roles": {
         "realm": [
           {
@@ -52,7 +48,6 @@ data:
           }
         ]
       },
-
       "groups": [
         {
           "name": "engineering",
@@ -75,7 +70,6 @@ data:
           ]
         }
       ],
-
       "clientScopes": [
         {
           "name": "basic",
@@ -162,7 +156,6 @@ data:
             }
           ]
         },
-
         {
           "name": "email",
           "description": "OpenID Connect scope for email claims",
@@ -203,7 +196,6 @@ data:
             }
           ]
         },
-
         {
           "name": "roles",
           "description": "OpenID Connect scope for realm and client roles",
@@ -253,7 +245,6 @@ data:
             }
           ]
         },
-
         {
           "name": "web-origins",
           "description": "OpenID Connect scope for allowed web origins",
@@ -275,7 +266,6 @@ data:
             }
           ]
         },
-
         {
           "name": "groups",
           "description": "Add Keycloak groups to tokens",
@@ -300,7 +290,6 @@ data:
             }
           ]
         },
-
         {
           "name": "app-audience",
           "description": "Add spring-api to aud claim",
@@ -325,7 +314,6 @@ data:
           ]
         }
       ],
-
       "clients": [
         {
           "clientId": "spring-api",
@@ -339,7 +327,6 @@ data:
           "serviceAccountsEnabled": false,
           "authorizationServicesEnabled": false
         },
-
         {
           "clientId": "cli-client",
           "name": "CLI test client",
@@ -360,7 +347,6 @@ data:
             "app-audience"
           ]
         },
-
         {
           "clientId": "oauth2-proxy",
           "name": "oauth2-proxy",
@@ -387,7 +373,6 @@ data:
           ]
         }
       ],
-
       "users": [
         {
           "username": "alice",
@@ -411,7 +396,6 @@ data:
             "/engineering/platform"
           ]
         },
-
         {
           "username": "bob",
           "enabled": true,
@@ -431,7 +415,6 @@ data:
             "premium"
           ]
         },
-
         {
           "username": "admin",
           "enabled": true,
@@ -454,5 +437,21 @@ data:
             "/admins"
           ]
         }
-      ]
+      ],
+      "eventsEnabled": true,
+      "eventsExpiration": 604800,
+      "enabledEventTypes": [
+        "LOGIN",
+        "LOGIN_ERROR",
+        "LOGOUT",
+        "CODE_TO_TOKEN",
+        "CODE_TO_TOKEN_ERROR",
+        "REFRESH_TOKEN",
+        "REFRESH_TOKEN_ERROR"
+      ],
+      "eventsListeners": [
+        "jboss-logging"
+      ],
+      "adminEventsEnabled": true,
+      "adminEventsDetailsEnabled": false
     }
