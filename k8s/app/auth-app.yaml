@@ -39,7 +39,6 @@ spec:
             paths:
               - /api/public
          
-
     # 4. Admin route requiring "admin" claim
     - from:
         - source:
@@ -85,7 +84,19 @@ spec:
       when:
         - key: request.auth.claims[realm_access][roles]
           values:
-            - user  
+            - user
+    
+    - from: 
+        - source:
+            principals:
+              - "cluster.local/ns/service-a/sa/service-a"
+
+      to:
+        - operation:
+            methods:
+              - GET
+            paths:
+              - /api/internal
 ---
 
 apiVersion: security.istio.io/v1
