@@ -20,6 +20,24 @@ spec:
     - name: http
       port: 4180
       targetPort: 4180
+
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: oauth2-proxy
+  namespace: iam
+spec:
+  hosts:
+    - app.localhost
+  gateways:
+    - istio-system/poc-gateway
+  http:
+    - route:
+        - destination:
+            host: oauth2-proxy.iam.svc.cluster.local
+            port:
+              number: 4180      
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -21,6 +21,24 @@ spec:
       port: 8080
       targetPort: 8080
 ---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: keycloak
+  namespace: iam
+spec:
+  hosts:
+    - keycloak.localhost
+  gateways:
+    - istio-system/poc-gateway
+  http:
+    - route:
+        - destination:
+            host: keycloak.iam.svc.cluster.local
+            port:
+              number: 8080
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:

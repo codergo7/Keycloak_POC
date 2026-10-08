@@ -1,0 +1,98 @@
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: keycloak-jwt
+  namespace: demo
+spec:
+  selector:
+    matchLabels:
+      app: spring-app
+  jwtRules:
+    - issuer: "http://keycloak.localhost:8080/realms/poc"
+      jwksUri: "http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/certs"
+      forwardOriginalToken: true   
+
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: spring-workload-authorization
+  namespace: demo
+spec:
+  selector:
+    matchLabels:
+      app: spring-app
+
+  action: ALLOW
+
+  rules:
+
+    # 3. OAuth2 Proxy (Note: /api/headers is still listed here)
+    - from:
+        - source:
+            principals:
+              - "*"
+      to:
+        - operation:
+            methods:
+              - GET
+            paths:
+              - /api/public
+         
+
+    # 4. Admin route requiring "admin" claim
+    - from:
+        - source:
+            requestPrincipals:
+              - "*"
+      to:
+        - operation:
+            methods:
+              - GET
+            paths:
+              - /api/admin
+      when:
+        - key: request.auth.claims[realm_access][roles]
+          values:
+            - "admin"
+
+    # 5. Protected routes requiring "noone" claim
+    - from:
+        - source:
+            requestPrincipals:
+              - "*"
+      to:
+        - operation:
+            methods:
+              - GET
+            paths:
+              - /api/headers
+      when:
+        - key: request.auth.claims[realm_access][roles]
+          values:
+            - developer
+    - from:
+        - source:
+            requestPrincipals:
+              - "*"
+      to:
+        - operation:
+            methods:
+              - GET
+            paths:
+              - /api/user
+              - /api/whoami
+      when:
+        - key: request.auth.claims[realm_access][roles]
+          values:
+            - user  
+---
+
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: demo-strict-mtls
+  namespace: demo
+spec:
+  mtls:
+    mode: STRICT

@@ -48,9 +48,9 @@ public class ApiController {
         while (names.hasMoreElements()) {
             String name = names.nextElement();
             String value = request.getHeader(name);
-            if (name.equalsIgnoreCase("authorization") && value != null) {
-                value = value.length() > 20 ? value.substring(0, 20) + "...[redacted]" : "[redacted]";
-            }
+            // if (name.equalsIgnoreCase("authorization") && value != null) {
+            //     value = value.length() > 20 ? value.substring(0, 20) + "...[redacted]" : "[redacted]";
+            // }
             // if (name.toLowerCase().contains("token") && value != null) {
             //     value = "[present; redacted]";
             // }

@@ -44,7 +44,6 @@ cluster: prereqs
 istio: cluster
 	ISTIO_VERSION="$(ISTIO_VERSION)" ./scripts/install-istio.sh
 	kubectl apply -f k8s/istio/ingress-authorization.yaml
-# 	kubectl apply -f k8s/istio/ingress-remove-sensitive-headers.yaml 
 
 namespaces:
 	kubectl apply -f k8s/base/namespaces.yaml
@@ -61,6 +60,7 @@ deploy: namespaces load
 	kubectl apply -f k8s/keycloak/keycloak.yaml
 	kubectl -n iam create serviceaccount oauth2-proxy
 	kubectl apply -f k8s/oauth2-proxy/oauth2-proxy.yaml
+	kubectl apply -f k8s/app/auth-app.yaml
 	kubectl apply -f k8s/app/app.yaml
 	kubectl apply -f k8s/istio/gateway.yaml
 	@echo "Waiting for Keycloak before enabling JWT validation..."
@@ -75,7 +75,7 @@ wait:
 	kubectl -n iam rollout status deploy/oauth2-proxy --timeout=180s
 	kubectl -n demo rollout status deploy/spring-app --timeout=180s
 
-up: istio deploy wait observability
+up: istio deploy wait #observability
 	@echo
 	@echo "POC is ready."
 	@echo "Keycloak:    http://keycloak.localhost:8080  admin/admin"
@@ -137,3 +137,12 @@ reset: clean up
 
 observability:
 	./scripts/install-observability.sh
+
+show-claims-alice:
+	@./scripts/show-claims.sh alice alice
+
+show-claims-bob:
+	@./scripts/show-claims.sh bob bob
+
+show-claims-admin:
+	@./scripts/show-claims.sh admin admin

@@ -2,7 +2,7 @@ apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: poc-gateway
-  namespace: iam
+  namespace: istio-system
 spec:
   selector:
     istio: ingressgateway
@@ -15,54 +15,7 @@ spec:
         - keycloak.localhost
         - app.localhost
         - api.localhost
----
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: keycloak
-  namespace: iam
-spec:
-  hosts:
-    - keycloak.localhost
-  gateways:
-    - poc-gateway
-  http:
-    - route:
-        - destination:
-            host: keycloak.iam.svc.cluster.local
-            port:
-              number: 8080
----
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: oauth2-proxy
-  namespace: iam
-spec:
-  hosts:
-    - app.localhost
-  gateways:
-    - poc-gateway
-  http:
-    - route:
-        - destination:
-            host: oauth2-proxy.iam.svc.cluster.local
-            port:
-              number: 4180
----
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: api
-  namespace: iam
-spec:
-  hosts:
-    - api.localhost
-  gateways:
-    - poc-gateway
-  http:
-    - route:
-        - destination:
-            host: spring-app.demo.svc.cluster.local
-            port:
-              number: 8080
+#        - keycloak.iam.svc.cluster.local
+
+
+
