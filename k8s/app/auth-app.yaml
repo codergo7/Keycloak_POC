@@ -10,7 +10,17 @@ spec:
   jwtRules:
     - issuer: "http://keycloak.localhost:8080/realms/poc"
       jwksUri: "http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/certs"
-      forwardOriginalToken: true   
+      forwardOriginalToken: true
+      # audiences:
+      # - "spring-app"
+      # outputPayloadToHeader: "x-jwt-payload"
+      # outputClaimToHeaders:
+      # - header: "x-user-id"
+      #   claim: "sub"
+      # - header: "x-user-email"
+      #   claim: "email"
+      # - header: "x-user-role"
+      #   claim: "role"         
 
 ---
 apiVersion: security.istio.io/v1
