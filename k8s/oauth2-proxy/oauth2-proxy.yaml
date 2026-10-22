@@ -32,12 +32,24 @@ spec:
     - app.localhost
   gateways:
     - istio-system/poc-gateway
+    # OAuth2-Proxy login and callback endpoints
   http:
-    - route:
+    # Route OAuth2 authentication endpoints to oauth2-proxy
+    - match:
+        - uri:
+            prefix: /oauth2/
+      route:
         - destination:
             host: oauth2-proxy.iam.svc.cluster.local
             port:
-              number: 4180      
+              number: 4180
+
+    # Route all other requests to Spring Boot
+    - route:
+        - destination:
+            host: spring-app.demo.svc.cluster.local
+            port:
+              number: 8080
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -75,13 +87,13 @@ spec:
             - --profile-url=http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/userinfo
             - --redirect-url=http://app.localhost:8080/oauth2/callback
             - --scope=openid profile email groups app-audience
-            - --upstream=http://spring-app.demo.svc.cluster.local:8080
+            #- --upstream=http://spring-app.demo.svc.cluster.local:8080
+            - --upstream=static://200
             - --pass-access-token=true
             - --pass-authorization-header=true
-            - --pass-host-header=false
-            - --set-xauthrequest=true
+            - --pass-host-header=true
             - --skip-provider-button=true
-            - --set-xauthrequest=false
+            - --set-xauthrequest=true
           env:
             - name: CLIENT_SECRET
               valueFrom:

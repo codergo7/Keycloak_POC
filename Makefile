@@ -43,7 +43,9 @@ cluster: prereqs
 
 istio: cluster
 	ISTIO_VERSION="$(ISTIO_VERSION)" ./scripts/install-istio.sh
+	kubectl apply -f k8s/istio/istio-cm.yaml
 	kubectl apply -f k8s/istio/ingress-authorization.yaml
+	
 
 namespaces:
 	kubectl apply -f k8s/base/namespaces.yaml
@@ -66,7 +68,6 @@ deploy: namespaces load
 	@echo "Waiting for Keycloak before enabling JWT validation..."
 	kubectl -n iam rollout status deploy/postgres --timeout=180s
 	kubectl -n iam rollout status deploy/keycloak --timeout=300s
-	kubectl apply -f k8s/istio/jwt-auth.yaml
 	kubectl apply -f k8s/service-a/service-a.yaml
 
 wait:

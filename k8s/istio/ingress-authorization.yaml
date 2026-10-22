@@ -1,4 +1,58 @@
 apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: demo-jwt-valiation
+  namespace: istio-system
+spec:
+  selector:
+    matchLabels:
+      app: istio-ingressgateway
+  jwtRules:
+    - issuer: "http://keycloak.localhost:8080/realms/poc"
+      jwksUri: "http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/certs"
+      forwardOriginalToken: true
+    - issuer: "http://keycloak.localhost:8080/realms/master"
+      jwksUri: "http://keycloak.iam.svc.cluster.local:8080/realms/master/protocol/openid-connect/certs"
+      forwardOriginalToken: true
+
+---
+
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: oauth2-external-auth
+  namespace: istio-system
+spec:
+  selector:
+    matchLabels:
+      istio: ingressgateway
+  action: CUSTOM
+  provider:
+    name: oauth2-proxy
+  rules:
+    - to:
+        - operation:
+            hosts:
+              - app.localhost
+              - "app.localhost:*"
+            notPaths:
+              - /oauth2/*
+              - /api/public
+              - /actuator/health
+
+      when:
+        - key: request.headers[Authorization]
+          notValues:
+            - "Bearer *"
+
+        - key: request.headers[User-Agent]
+          values:
+            - "Mozilla/*"
+
+---
+
+
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: ingress-authorization
@@ -7,47 +61,46 @@ spec:
   selector:
     matchLabels:
       istio: ingressgateway
-
   action: ALLOW
-
   rules:
-    # 1. Keycloak: allow browser login and admin console
+    # Keycloak login and OIDC endpoints
     - to:
         - operation:
             hosts:
-              - "keycloak.localhost"
+              - keycloak.localhost
               - "keycloak.localhost:*"
 
-    # 2. OAuth2-Proxy: allow browser authentication
+    # Browser traffic: authentication is handled
+    # by the separate CUSTOM AuthorizationPolicy
     - to:
         - operation:
             hosts:
-              - "app.localhost"
+              - app.localhost
               - "app.localhost:*"
 
-    # 3. Public API: no JWT required
+    # Public API endpoint
     - to:
         - operation:
             hosts:
-              - "api.localhost"
+              - api.localhost
               - "api.localhost:*"
-            paths:
-              - "/api/public"
-              - "/actuator/health"
+            methods: ["GET"]
+            paths: ["/api/public"]
 
-    # 4. Protected API: any authenticated user
+    # JWT-authenticated API requests
     - from:
         - source:
-            requestPrincipals:
-              - "*"
+            requestPrincipals: ["*"]
       to:
         - operation:
             hosts:
-              - "api.localhost"
+              - api.localhost
               - "api.localhost:*"
+            methods: ["GET"]
             paths:
-              - "/api/user"
-              - "/api/whoami"
-              - "/api/headers"
-              - "/api/admin"
+              - /api/user
+              - /api/whoami
+              - /api/headers
+              - /api/admin
+
 

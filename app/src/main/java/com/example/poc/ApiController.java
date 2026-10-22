@@ -1,6 +1,9 @@
 package com.example.poc;
 
 import jakarta.servlet.http.HttpServletRequest;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.*;
 
@@ -10,6 +13,9 @@ import java.util.*;
 
 @RestController
 public class ApiController {
+
+    private static final Logger log =
+        LoggerFactory.getLogger(ApiController.class);
 
     @GetMapping({ "/", "/api/public" })
     public Map<String, Object> publicEndpoint() throws Exception {
@@ -38,6 +44,7 @@ public class ApiController {
         out.put("xForwardedUser", request.getHeader("X-Forwarded-User"));
         out.put("xForwardedEmail", request.getHeader("X-Forwarded-Email"));
         out.put("xForwardedAccessTokenPresent", request.getHeader("X-Forwarded-Access-Token") != null);
+
         return out;
     }
 
@@ -55,6 +62,7 @@ public class ApiController {
             //     value = "[present; redacted]";
             // }
             headers.put(name, value);
+            log.info("HTTP Header: {} = {}", name, value);
         }
         return headers;
     }

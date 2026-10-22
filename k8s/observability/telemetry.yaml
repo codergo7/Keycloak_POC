@@ -1,10 +1,46 @@
+# apiVersion: telemetry.istio.io/v1
+# kind: Telemetry
+# metadata:
+#   name: mesh-default
+#   namespace: istio-system
+# spec:
+#   tracing:
+#   - providers:
+#     - name: jaeger
+#     randomSamplingPercentage: 100
+
+# ---
+
+
 apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
-  name: mesh-default
+  name: spring-debug-access-logs
+  namespace: demo
+spec:
+  selector:
+    matchLabels:
+      app: spring-app
+  accessLogging:
+    - providers:
+        - name: envoy
+      filter:
+        expression: 'request.url_path.startsWith("/api/")'
+
+
+---
+
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: ingress-debug-access-logs
   namespace: istio-system
 spec:
-  tracing:
-  - providers:
-    - name: jaeger
-    randomSamplingPercentage: 100
+  selector:
+    matchLabels:
+      app: istio-ingressgateway
+  accessLogging:
+    - providers:
+        - name: envoy
+      filter:
+        expression: 'request.url_path.startsWith("/api/")'

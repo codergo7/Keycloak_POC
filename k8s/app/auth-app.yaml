@@ -1,3 +1,4 @@
+
 apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
@@ -8,9 +9,16 @@ spec:
     matchLabels:
       app: spring-app
   jwtRules:
-    - issuer: "http://keycloak.localhost:8080/realms/poc"
-      jwksUri: "http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/certs"
+    - issuer: http://keycloak.localhost:8080/realms/poc
+      jwksUri: http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/certs
+      audiences:
+        - spring-api
       forwardOriginalToken: true
+      fromHeaders:
+        - name: Authorization
+          prefix: "Bearer "
+        - name: X-Auth-Request-Access-Token
+
       # audiences:
       # - "spring-app"
       # outputPayloadToHeader: "x-jwt-payload"
@@ -23,6 +31,7 @@ spec:
       #   claim: "role"         
 
 ---
+
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -32,81 +41,62 @@ spec:
   selector:
     matchLabels:
       app: spring-app
-
   action: ALLOW
-
   rules:
+    # Public endpoint
+    - to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/api/public"]
 
-    # 3. OAuth2 Proxy (Note: /api/headers is still listed here)
+    # User role
     - from:
         - source:
-            principals:
-              - "*"
+            requestPrincipals: ["*"]
       to:
         - operation:
-            methods:
-              - GET
-            paths:
-              - /api/public
-         
-    # 4. Admin route requiring "admin" claim
-    - from:
-        - source:
-            requestPrincipals:
-              - "*"
-      to:
-        - operation:
-            methods:
-              - GET
-            paths:
-              - /api/admin
-      when:
-        - key: request.auth.claims[realm_access][roles]
-          values:
-            - "admin"
-
-    # 5. Protected routes requiring "noone" claim
-    - from:
-        - source:
-            requestPrincipals:
-              - "*"
-      to:
-        - operation:
-            methods:
-              - GET
-            paths:
-              - /api/headers
-      when:
-        - key: request.auth.claims[realm_access][roles]
-          values:
-            - developer
-    - from:
-        - source:
-            requestPrincipals:
-              - "*"
-      to:
-        - operation:
-            methods:
-              - GET
+            methods: ["GET"]
             paths:
               - /api/user
               - /api/whoami
       when:
         - key: request.auth.claims[realm_access][roles]
-          values:
-            - user
-    
-    - from: 
-        - source:
-            principals:
-              - "cluster.local/ns/service-a/sa/service-a"
+          values: ["user"]
 
+    # Developer role
+    - from:
+        - source:
+            requestPrincipals: ["*"]
       to:
         - operation:
-            methods:
-              - GET
-            paths:
-              - /api/internal
+            methods: ["GET"]
+            paths: ["/api/headers"]
+      when:
+        - key: request.auth.claims[realm_access][roles]
+          values: ["developer"]
+
+    # Admin role
+    - from:
+        - source:
+            requestPrincipals: ["*"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/api/admin"]
+      when:
+        - key: request.auth.claims[realm_access][roles]
+          values: ["admin"]
+
+    # Internal service-to-service endpoint
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/service-a/sa/service-a
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/api/internal"]
+
 ---
 
 apiVersion: security.istio.io/v1
