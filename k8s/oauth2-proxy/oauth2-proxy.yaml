@@ -50,6 +50,11 @@ spec:
             host: spring-app.demo.svc.cluster.local
             port:
               number: 8080
+      # headers:
+      #   response:
+      #     remove:
+      #       - x-auth-request-access-token
+      #       - authorization
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -78,6 +83,8 @@ spec:
             - --cookie-secret=$(COOKIE_SECRET)
             - --cookie-secure=false
             - --cookie-samesite=lax
+            - --cookie-refresh=4m
+            - --cookie-expire=8h
             - --email-domain=*
             - --oidc-issuer-url=http://keycloak.localhost:8080/realms/poc
             - --skip-oidc-discovery=true
