@@ -9,11 +9,19 @@ spec:
   gateways:
     - istio-system/poc-gateway
   http:
+    # Route all other requests to Spring Boot
     - route:
         - destination:
             host: spring-app.demo.svc.cluster.local
             port:
               number: 8080
+# the following config didn't work
+# headers are removed in the envoy filter
+      # headers:
+      #   response:
+      #     remove:
+      #       - x-auth-request-access-token
+      #       - authorization
 
 ---
 apiVersion: v1

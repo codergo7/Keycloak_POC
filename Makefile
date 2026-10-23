@@ -45,6 +45,7 @@ istio: cluster
 	ISTIO_VERSION="$(ISTIO_VERSION)" ./scripts/install-istio.sh
 	kubectl apply -f k8s/istio/istio-cm.yaml
 	kubectl apply -f k8s/istio/ingress-authorization.yaml
+	kubectl apply -f k8s/istio/ingress-remove-sensitive-headers.yaml
 	
 
 namespaces:
