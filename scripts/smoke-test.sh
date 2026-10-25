@@ -232,6 +232,7 @@ curl -sS \
   -D "$HEADERS" \
   -o /dev/null \
   -H 'Host: app.localhost' \
+  -A 'Mozilla/5.0' \
   "${APP_URL}/"
 
 STATUS="$(awk 'NR==1 {print $2}' "$HEADERS" | tr -d '\r')"

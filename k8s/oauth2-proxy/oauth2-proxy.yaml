@@ -43,6 +43,17 @@ spec:
             host: oauth2-proxy.iam.svc.cluster.local
             port:
               number: 4180
+      # --set-xauthrequest makes oauth2-proxy return identity/token headers;
+      # they are only meant for ext_authz, never for the browser
+      headers:
+        response:
+          remove:
+            - x-auth-request-user
+            - x-auth-request-email
+            - x-auth-request-groups
+            - x-auth-request-preferred-username
+            - x-auth-request-access-token
+            - authorization
 
     # Route all other requests to Spring Boot
     - route:
@@ -50,11 +61,6 @@ spec:
             host: spring-app.demo.svc.cluster.local
             port:
               number: 8080
-      # headers:
-      #   response:
-      #     remove:
-      #       - x-auth-request-access-token
-      #       - authorization
 ---
 apiVersion: apps/v1
 kind: Deployment

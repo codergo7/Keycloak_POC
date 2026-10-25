@@ -45,7 +45,7 @@ istio: cluster
 	ISTIO_VERSION="$(ISTIO_VERSION)" ./scripts/install-istio.sh
 	kubectl apply -f k8s/istio/istio-cm.yaml
 	kubectl apply -f k8s/istio/ingress-authorization.yaml
-	kubectl apply -f k8s/istio/ingress-remove-sensitive-headers.yaml
+#	kubectl apply -f k8s/istio/ingress-remove-sensitive-headers.yaml
 	
 
 namespaces:
@@ -69,6 +69,9 @@ deploy: namespaces load
 	@echo "Waiting for Keycloak before enabling JWT validation..."
 	kubectl -n iam rollout status deploy/postgres --timeout=180s
 	kubectl -n iam rollout status deploy/keycloak --timeout=300s
+	@echo "Restarting istiod so it re-fetches the Keycloak JWKS (first fetch fails while Keycloak is down)..."
+	kubectl -n istio-system rollout restart deploy/istiod
+	kubectl -n istio-system rollout status deploy/istiod --timeout=180s
 	kubectl apply -f k8s/service-a/service-a.yaml
 
 wait:
