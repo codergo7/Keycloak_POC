@@ -61,6 +61,12 @@ spec:
             host: spring-app.demo.svc.cluster.local
             port:
               number: 8080
+      # The oauth2-proxy session cookie is only for ext_authz, which runs
+      # before route header rules; Spring is stateless and must not see it
+      headers:
+        request:
+          remove:
+            - cookie
 ---
 apiVersion: apps/v1
 kind: Deployment
