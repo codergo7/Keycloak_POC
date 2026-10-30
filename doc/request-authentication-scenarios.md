@@ -469,171 +469,6 @@ Keycloak login / authentication flow
 That's another good example of responsibility separation.
 
 
-10. Service A → Spring with mTLS
-
-And this is where RequestAuthentication may not be involved at all in your current internal flow.
-
-
-Your call:
-
-kubectl exec -n service-a deploy/service-a -c service-a -- \
-  curl http://spring-app.demo.svc.cluster.local:8080/api/internal
-
-
-has no JWT.
-
-Instead:
-
-Service A
- │
- ▼
-Service A Envoy
- │
- │ mTLS
- │
- │ client certificate
- ▼
-Spring Envoy
- │
- ├── PeerAuthentication
- │ │
- │ │ STRICT
- │ │
- │ └── authenticate workload
- │
- │ identity:
- │ cluster.local/ns/service-a/sa/service-a
- │
- ▼
-AuthorizationPolicy
- │
- │ serviceAccounts:
- │ │ service-a/service-a
- │
- │ MATCH
- ▼
-Spring
- │
- ▼
-200
-
-Here authentication is performed through mTLS, not JWT.
-
-So:
-
-RequestAuthentication → JWT identity
-
-PeerAuthentication    → mTLS workload identity
-
-This distinction is extremely important.
-
-
-11. Unauthorized ServiceAccount
-
-Your negative test:
-
-bad-client
-ServiceAccount: default
-
-can still successfully establish mTLS.
-
-Therefore:
-
-bad-client
- │
- ▼
-Envoy
- │
- │ mTLS
- ▼
-Spring Envoy
- │
- ├── PeerAuthentication
- │ │
- │ └── authenticated ✓
- │
- │ identity:
- │ cluster.local/ns/service-a/sa/default
- │
- ▼
-AuthorizationPolicy
- │
- │ allowed:
- │ service-a/service-a
- │
- │ identity doesn't match
- ▼
-403
-
-Again:
-
-Authenticated ✓
-Authorized   ✗
-
-
-12. Future: Service A + Keycloak JWT + mTLS
-
-This is the experiment I'd add next.
-
-Service A gets a token using:
-
-client_credentials
-
-Then:
-
-Service A
- │
- │ Authorization:
- │ Bearer <service-a JWT>
- ▼
-Service A Envoy
- │
- │ mTLS
- ▼
-Spring Envoy
- │
- ├────────────────────────────┐
- │                            │
- ▼                            ▼
-PeerAuthentication      RequestAuthentication
- │                            │
- │ authenticate               │ authenticate
- │ workload                   │ JWT
- │                            │
- ▼                            ▼
-service-a/service-a      OAuth client identity
- │                       + roles/claims
- │                            │
- └─────────────┬──────────────┘
-               ▼
-       AuthorizationPolicy
-               │
-       require BOTH
-               │
-               ▼
-             Spring
-
-Now we have two independent authenticated identities.
-
-Layer 1 — workload identity
-mTLS certificate
-
-cluster.local/ns/service-a/sa/service-a
-
-answers:
-
-Which Kubernetes workload sent this traffic?
-
-Layer 2 — OAuth identity
-Keycloak JWT
-
-answers:
-
-Which OAuth client/application identity is represented by this request, and what claims/roles does it have?
-
-And AuthorizationPolicy can use both.
-
-
 The complete picture
 
 This is the diagram I'd put in the presentation:
@@ -645,26 +480,22 @@ This is the diagram I'd put in the presentation:
                     │     Envoy     │
                     └───────┬───────┘
                             │
-             ┌──────────────┴──────────────┐
-             │                             │
-             ▼                             ▼
-     PeerAuthentication           RequestAuthentication
-             │                             │
-             │ mTLS                        │ JWT
-             │                             │
-             ▼                             ▼
-     Workload identity              Request identity
-             │                             │
-     ServiceAccount                 Keycloak subject
-     SPIFFE identity                roles
-                                    groups
-                                    claims
-             │                             │
-             └──────────────┬──────────────┘
+                            ▼
+                  RequestAuthentication
+                            │
+                            │ JWT
+                            ▼
+                    Request identity
+                            │
+                    Keycloak subject
+                    roles
+                    groups
+                    claims
+                            │
                             ▼
                   AuthorizationPolicy
                             │
-                  "Is it allowed?"
+                  "Do the claims allow it?"
                             │
                     ┌───────┴───────┐
                     │               │
@@ -700,14 +531,13 @@ Istio / Keycloak component	Main responsibility
 Keycloak	Authenticate users/clients and issue tokens
 OAuth2-Proxy	Browser OIDC flow and session management
 RequestAuthentication	Validate JWTs and expose authenticated JWT identity/claims
-PeerAuthentication	Configure/authenticate workload-to-workload mTLS
 AuthorizationPolicy	Decide whether the authenticated/request identity may access something
 VirtualService	Route traffic
 Spring Boot	Business logic and business-level authorization
 
 The shortest presentation version is:
 
-RequestAuthentication validates JWT identity. PeerAuthentication establishes workload identity through mTLS. AuthorizationPolicy consumes those identities and decides whether the request is allowed. OAuth2-Proxy handles the browser login/session flow, while Keycloak authenticates identities and issues tokens.
+RequestAuthentication validates the JWT and exposes its claims. AuthorizationPolicy decides from those claims whether the request is allowed. OAuth2-Proxy handles the browser login/session flow, while Keycloak authenticates identities and issues tokens.
 
 That separation of responsibilities is really the central architecture lesson of your whole POC.
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The real Envoy filter order at the ingress gateway and the Spring sidecar.
-// One stage lights up per click (slide needs `clicks: 10`).
+// One stage lights up per click (slide needs `clicks: 9`).
 import { computed } from 'vue'
 import { useSlideContext } from '@slidev/client'
 
@@ -27,15 +27,13 @@ const gateway: Stage[] = [
   { name: 'ALLOW', res: 'AuthzPolicy ALLOW', ask: 'Any rule matches?', fail: '403', failClass: 'code-403',
     detail: 'ingress-authorization: keycloak and app hosts are open; api.localhost needs requestPrincipals except /api/public.' },
   { name: 'Router', res: 'VirtualService', ask: 'Header rules, send',
-    detail: 'Applies route header rules (e.g. remove cookie), then sends the request over mTLS to the pod.' },
+    detail: 'Applies route header rules (e.g. remove cookie), then sends the request to the Spring pod.' },
 ]
 const sidecar: Stage[] = [
-  { name: 'mTLS', res: 'PeerAuthentication', ask: 'Istio cert?', fail: 'reset', failClass: 'code-403',
-    detail: 'STRICT: plain-text connections are refused. The client certificate becomes source.principal.' },
   { name: 'JWT', res: 'RequestAuthn', ask: 'aud = spring-api?', fail: '401', failClass: 'code-401',
     detail: 'keycloak-jwt reads Authorization: Bearer and X-Auth-Request-Access-Token, and requires audience spring-api.' },
-  { name: 'ALLOW', res: 'AuthzPolicy ALLOW', ask: 'Role / caller ok?', fail: '403', failClass: 'code-403',
-    detail: 'spring-workload-authorization: path + realm role claim, or the service-a mTLS identity for /api/internal.' },
+  { name: 'ALLOW', res: 'AuthzPolicy ALLOW', ask: 'Role claim ok?', fail: '403', failClass: 'code-403',
+    detail: 'spring-workload-authorization: path + realm role claim (realm_access.roles). No matching rule, 403.' },
   { name: 'Spring', res: 'app :8080', ask: 'Business logic',
     detail: 'Reaches the app on localhost with identity headers. No login code, no token parsing in Spring.' },
 ]
@@ -66,7 +64,7 @@ function state(globalIndex: number) {
     </div>
 
     <div class="hop" :class="{ lit: step > gateway.length }">
-      <span>mTLS</span>
+      <span>to the pod</span>
     </div>
 
     <div class="lane-title">Spring sidecar <span class="faint">· Envoy</span></div>

@@ -11,7 +11,7 @@ Contents
 3. Order of evaluation at the Spring sidecar
 4. Algorithm of each step
 5. Response path
-6. End-to-end flows (browser, API, service-to-service)
+6. End-to-end flows (browser, API)
 7. Status code cheat sheet
 8. Gotchas
 9. How to inspect it yourself
@@ -30,7 +30,6 @@ configuration and pushes it to the ingress gateway and to every sidecar.
 | mesh config `extensionProviders.oauth2-proxy` | `ext_authz` settings (which headers go where) | ingress gateway | `k8s/istio/istio-cm.yaml` |
 | RequestAuthentication `demo-jwt-valiation` | `jwt_authn` filter | ingress gateway | `k8s/istio/ingress-authorization.yaml` |
 | AuthorizationPolicy `ingress-authorization` (ALLOW) | `rbac` filter | ingress gateway | `k8s/istio/ingress-authorization.yaml` |
-| PeerAuthentication `demo-strict-mtls` | TLS settings of the inbound listener | Spring sidecar | `k8s/app/auth-app.yaml` |
 | RequestAuthentication `keycloak-jwt` | `jwt_authn` filter | Spring sidecar | `k8s/app/auth-app.yaml` |
 | AuthorizationPolicy `spring-workload-authorization` (ALLOW) | `rbac` filter | Spring sidecar | `k8s/app/auth-app.yaml` |
 
@@ -48,11 +47,10 @@ kind node port 30080  ──►  istio-ingressgateway Service :80  ──►  ga
 │ Gateway → VirtualService route → CUSTOM authz (oauth2-proxy) →          │
 │ RequestAuthentication → ALLOW AuthorizationPolicy → router              │
 └──────────────────────────────────────────────────────────────────────────┘
-     │  mTLS (Istio certificates)
+     │  to the Spring pod
      ▼
 ┌──────────────────────── SPRING SIDECAR (Envoy) ─────────────────────────┐
-│ PeerAuthentication (mTLS) → RequestAuthentication →                     │
-│ ALLOW AuthorizationPolicy → router                                      │
+│ RequestAuthentication → ALLOW AuthorizationPolicy → router              │
 └──────────────────────────────────────────────────────────────────────────┘
      │  plain HTTP on localhost
      ▼
@@ -145,7 +143,6 @@ The full decision sequence at the gateway:
                                   │ apply route    │
                                   │ header rules,  │
                                   │ send upstream  │
-                                  │ (mTLS)         │
                                   └───────────────┘
 ```
 
@@ -155,7 +152,6 @@ The full decision sequence at the gateway:
 HTTP filter chain of the sidecar's inbound listener for port 8080:
 
 ```
-(network level) TLS handshake          ◄── PeerAuthentication STRICT
 istio.metadata_exchange
 envoy.filters.http.jwt_authn           ◄── RequestAuthentication keycloak-jwt
 envoy.filters.http.rbac (ALLOW)        ◄── AuthorizationPolicy spring-workload-authorization
@@ -168,16 +164,7 @@ envoy.filters.http.router              ◄── forwards to the app on localhos
                                       │
                                       ▼
                    ┌──────────────────────────────────────┐
-              [1]  │ PeerAuthentication STRICT:            │
-                   │ is it mTLS with an Istio certificate? │
-                   └──────────────────────────────────────┘
-                          │ no                    │ yes → peer identity known,
-                          ▼                       │       e.g. cluster.local/ns/
-               connection reset                   │       istio-system/sa/istio-
-                (no HTTP status)                  │       ingressgateway-service-account
-                                                  ▼
-                   ┌──────────────────────────────────────┐
-              [2]  │ RequestAuthentication keycloak-jwt:   │
+              [1]  │ RequestAuthentication keycloak-jwt:   │
                    │ token in Authorization: Bearer or     │
                    │ X-Auth-Request-Access-Token?          │
                    └──────────────────────────────────────┘
@@ -188,10 +175,9 @@ envoy.filters.http.router              ◄── forwards to the app on localhos
                      │               │              allowed"          STOP
                      ▼               ▼
                    ┌──────────────────────────────────────┐
-              [3]  │ ALLOW policy spring-workload-         │
+              [2]  │ ALLOW policy spring-workload-         │
                    │ authorization: does any rule match?   │
-                   │ (path + method + role claim, or       │
-                   │  service-a's mTLS identity)           │
+                   │ (path + method + role claim)          │
                    └──────────────────────────────────────┘
                           │ yes                   │ no
                           ▼                       ▼
@@ -405,21 +391,7 @@ rules ([D] in 4.3):
 
 Anything else, e.g. `api.localhost/api/internal` from outside, gets 403 at the gateway.
 
-### 4.7 PeerAuthentication `demo-strict-mtls` (sidecar)
-
-```
-mode STRICT for namespace demo:
-   connection is Istio mTLS  → accept; the client certificate gives the
-                                 caller identity (source.principal), e.g.
-                                 cluster.local/ns/service-a/sa/service-a
-   connection is plain text  → reject the connection
-```
-
-This is what makes `principals: [cluster.local/ns/service-a/sa/service-a]` in
-the Spring AuthorizationPolicy trustworthy: the identity comes from a
-certificate, not from a header.
-
-### 4.8 ALLOW policy `spring-workload-authorization` (sidecar)
+### 4.7 ALLOW policy `spring-workload-authorization` (sidecar)
 
 | Path (GET) | Rule |
 |---|---|
@@ -427,15 +399,14 @@ certificate, not from a header.
 | `/api/user`, `/api/whoami` | valid JWT **and** realm role `user` |
 | `/api/headers` | valid JWT **and** realm role `developer` |
 | `/api/admin` | valid JWT **and** realm role `admin` |
-| `/api/internal` | mTLS identity `cluster.local/ns/service-a/sa/service-a` |
 | anything else (e.g. `/`) | no rule matches → 403 |
 
-### 4.9 Router (gateway)
+### 4.8 Router (gateway)
 
 ```
 1. Apply the chosen route's request header rules
       e.g. app.localhost "/" → remove "cookie"
-2. Open (or reuse) an mTLS connection to the destination pod's sidecar
+2. Open (or reuse) a connection to the destination pod's sidecar
 3. Send the request
 ```
 
@@ -505,12 +476,11 @@ Browser ── GET app.localhost/api/whoami  Cookie: _oauth2_proxy=... ──►
         request now has x-auth-request-user/email/access-token
   [5] gateway JWT: no Authorization: Bearer → no principal (fine)
   [6] ALLOW rule 2 (app host) matches
-  [7] router removes "cookie", forwards over mTLS
+  [7] router removes "cookie", forwards to the Spring pod
 
 Spring sidecar
-  [1] mTLS from the gateway → ok
-  [2] jwt_authn reads X-Auth-Request-Access-Token → valid, aud spring-api
-  [3] ALLOW: /api/whoami + role "user" → ok
+  [1] jwt_authn reads X-Auth-Request-Access-Token → valid, aud spring-api
+  [2] ALLOW: /api/whoami + role "user" → ok
 Spring app sees x-auth-request-user/email and the token header, but no cookie.
 ◄── 200 JSON
 ```
@@ -523,11 +493,11 @@ curl ── GET api.localhost/api/admin  Authorization: Bearer <alice token> ─
   [3] CUSTOM rules do not match (host api.localhost)
   [5] jwt_authn validates the token (poc realm) → principal set
   [6] ALLOW rule 4 (requestPrincipals) matches
-  [7] forward over mTLS
+  [7] forward to the Spring pod
 
 Spring sidecar
-  [2] valid token, audience spring-api
-  [3] /api/admin needs role "admin"; alice has none → no rule matches
+  [1] valid token, audience spring-api
+  [2] /api/admin needs role "admin"; alice has none → no rule matches
 ◄── 403 RBAC: access denied
 
 Same call without a token:
@@ -535,23 +505,6 @@ Same call without a token:
 With a corrupted token:
   gateway [5] signature check fails → 401 at the gateway
 ```
-
-### 6.4 Service to service (`service-a` → Spring)
-
-```
-service-a app ── GET spring-app.demo:8080/api/internal ──► service-a sidecar
-   (outbound: routes to spring-app, upgrades to mTLS with service-a's certificate)
-
-Spring sidecar
-  [1] mTLS → source.principal = cluster.local/ns/service-a/sa/service-a
-  [2] no JWT → no request principal (fine)
-  [3] ALLOW rule "/api/internal from service-a SA" matches
-◄── 200
-
-Same call from a pod using another service account (smoke test "bad-client"):
-  [3] principal does not match → 403
-```
-
 
 ## 7. Status code cheat sheet
 
@@ -564,7 +517,6 @@ Same call from a pod using another service account (smoke test "bad-client"):
 | `401 Audiences in Jwt are not allowed` | sidecar `jwt_authn` | token lacks `aud: spring-api` |
 | `403 RBAC: access denied` | gateway or sidecar `rbac` | no ALLOW rule matched |
 | `404` | gateway | Host/path has no route |
-| connection reset | sidecar | plain-text call to a STRICT mTLS workload |
 
 The access log shows which proxy answered and why, in `details=`. Examples:
 `ext_authz_denied`, `jwt_authn_access_denied{Jwt_verification_fails}`,

@@ -5,19 +5,19 @@ import { useSlideContext } from '@slidev/client'
 
 const { $clicks } = useSlideContext()
 
-const cols = ['Route', 'CUSTOM', 'JWT', 'ALLOW', 'mTLS', 'JWT', 'ALLOW', 'Spring']
+const cols = ['Route', 'CUSTOM', 'JWT', 'ALLOW', 'JWT', 'ALLOW', 'Spring']
 const groups = [
   { label: 'ingress gateway', span: 4 },
-  { label: 'spring sidecar', span: 4 },
+  { label: 'spring sidecar', span: 3 },
 ]
 
 const lanes = [
   { who: 'Browser, no session', req: 'GET app/api/whoami', stop: 1, code: '302 → Keycloak', cls: 'code-30x', why: 'oauth2-proxy: no session' },
-  { who: 'Browser, with session', req: 'GET app/api/whoami + cookie', stop: 7, code: '200', cls: 'code-200', why: 'token from X-Auth-Request-Access-Token' },
+  { who: 'Browser, with session', req: 'GET app/api/whoami + cookie', stop: 6, code: '200', cls: 'code-200', why: 'token from X-Auth-Request-Access-Token' },
   { who: 'curl, no token', req: 'GET api/api/user', stop: 3, code: '403', cls: 'code-403', why: 'no requestPrincipal at the edge' },
   { who: 'curl, tampered token', req: 'GET api/api/user + Bearer x.y.z', stop: 2, code: '401', cls: 'code-401', why: 'Jwt verification fails' },
-  { who: 'alice token', req: 'GET api/api/admin', stop: 6, code: '403', cls: 'code-403', why: 'valid, but no admin role' },
-  { who: 'admin token', req: 'GET api/api/admin', stop: 7, code: '200', cls: 'code-200', why: 'role admin' },
+  { who: 'alice token', req: 'GET api/api/admin', stop: 5, code: '403', cls: 'code-403', why: 'valid, but no admin role' },
+  { who: 'admin token', req: 'GET api/api/admin', stop: 6, code: '200', cls: 'code-200', why: 'role admin' },
 ]
 
 function pos(i: number) {

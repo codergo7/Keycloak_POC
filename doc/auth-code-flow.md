@@ -127,14 +127,5 @@ AuthorizationPolicy
 Spring
 
 
-FLOW 3 — Internal service
-Service A
-   ↓
-Istio mTLS
-   ↓
-ServiceAccount authorization
-   ↓
-Spring
-
 ================================
 
