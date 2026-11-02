@@ -2,8 +2,8 @@
 theme: default
 title: Keycloak, OAuth2-Proxy & Istio
 info: |
-  Who are you, and what may you do?
-  Authentication and authorization on Kubernetes with Keycloak, OAuth2-Proxy and Istio.
+  Claims-based Authorization
+  Using Keycloak, OAuth2-Proxy and Istio on Kubernetes
 colorSchema: light
 transition: slide-left
 canvasWidth: 980
@@ -19,17 +19,16 @@ class: navy
   <div class="kicker" v-motion :initial="{ opacity: 0, y: -10 }" :enter="{ opacity: 1, y: 0 }">Identity on Kubernetes · POC</div>
 
   <h1 class="!text-6xl !leading-tight !mb-6">
-    <span class="inline-block" v-motion :initial="{ opacity: 0, x: -40 }" :enter="{ opacity: 1, x: 0, transition: { delay: 150 } }">Who are you,</span><br>
-    <span class="inline-block" v-motion :initial="{ opacity: 0, x: -40 }" :enter="{ opacity: 1, x: 0, transition: { delay: 450 } }">and what may you do?</span>
+    <span class="inline-block" v-motion :initial="{ opacity: 0, x: -40 }" :enter="{ opacity: 1, x: 0, transition: { delay: 150 } }">Claims-based Authorization</span><br>
   </h1>
 
   <p class="text-lg max-w-2xl muted" v-motion :initial="{ opacity: 0 }" :enter="{ opacity: 1, transition: { delay: 900 } }">
-    Authentication and authorization with <span class="kc">Keycloak</span>, <span class="op">OAuth2-Proxy</span>
-    and <span class="is">Istio</span>: the theory, the story, then a live demo
+    Using <span class="kc">Keycloak</span>, <span class="op">OAuth2-Proxy</span>
+    and <span class="is">Istio on Kubernetes</span>: the theory, the story, then a live demo
   </p>
 
   <div class="mt-14 text-sm muted" v-motion :initial="{ opacity: 0 }" :enter="{ opacity: 1, transition: { delay: 1200 } }">
-    Gokhan Ozturk · 18/11/2016 - Lunch&Learn
+    Gokhan Ozturk · 18/11/2016 - Lunch&Learn - Klarrio
   </div>
 </div>
 
@@ -107,7 +106,6 @@ This is the plan for today, in three parts.
 </div>
 
 <!--
-The AuthN card slides in from the left as the slide opens.
 
 Authentication answers "who are you?". You claim an identity, then you prove it, for example with a password. The result is an identity we trust, carried in a token or a session. Think of showing your passport at the airport. When it fails, the answer is 401.
 
