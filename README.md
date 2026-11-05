@@ -241,21 +241,13 @@ Current rules:
 This deliberately separates authentication (is the JWT valid?) from authorization
 (is this identity allowed to call this endpoint?).
 
-## mTLS experiments
+## Inspecting the sidecars
 
 Both `iam` and `demo` namespaces have sidecar injection enabled.
-
-Check sidecars:
 
 ```bash
 kubectl get pods -n iam
 kubectl get pods -n demo
-```
-
-Then add a namespace-wide `PeerAuthentication` with `STRICT` mode and verify traffic.
-You can also inspect Envoy config with:
-
-```bash
 istioctl proxy-status
 istioctl proxy-config clusters deploy/spring-app.demo
 ```

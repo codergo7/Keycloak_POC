@@ -29,7 +29,7 @@ A slide that uses one of these declares its click count in its frontmatter (`cli
 
 Running order: theory (1–13), the two doors and the proxies (14–19), a live demo of Door 1 (20), Door 2 (21–22), a live demo of Door 2 (23), wrap-up (24–26), then backup slides on session lifetimes (27–30).
 
-Every slide has speaker notes (the HTML comment at the end of the slide), including what each click animates. `[click]` markers in the notes highlight the current sentence in the presenter view.
+Every slide has speaker notes written to be read aloud (the HTML comment at the end of the slide), in full sentences per click. The main slides (1–26) come to about 31 minutes including both demos (estimate, not rehearsed). `[click]` markers in the notes highlight the current sentence in the presenter view.
 
 ## Notes
 

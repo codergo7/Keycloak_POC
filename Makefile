@@ -72,7 +72,6 @@ deploy: namespaces load
 	@echo "Restarting istiod so it re-fetches the Keycloak JWKS (first fetch fails while Keycloak is down)..."
 	kubectl -n istio-system rollout restart deploy/istiod
 	kubectl -n istio-system rollout status deploy/istiod --timeout=180s
-	kubectl apply -f k8s/service-a/service-a.yaml
 
 wait:
 	kubectl -n iam rollout status deploy/postgres --timeout=180s

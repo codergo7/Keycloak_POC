@@ -33,9 +33,10 @@ class: navy
 </div>
 
 <!--
+Welcome to the presenation about Claims-based Authorizatoon using Keyclaok, Oauth2Proxy and Istio
+
 I am not going to deep dive into each technology. I will summarize each one and show how they handle authentication and authorization together.
 
-"Who are you?" is authentication, and "What may you do?" is authorization. We will answer both with Keycloak, OAuth2-Proxy and Istio.
 -->
 
 ---
@@ -65,11 +66,11 @@ I am not going to deep dive into each technology. I will summarize each one and 
 <!--
 The talk has three parts.
 
-[click] First comes the theory, from authentication and authorization to tokens and the login flow.
+[click] First is the theory, from authentication and authorization to tokens and the login flow.
 
 [click] Then we look at the two doors into our application: one for people in a browser and one for scripts that send a token.
 
-[click] Finally comes the proof, with a live demo after each door.
+[click] Finally the proof, with a live demo after each door.
 -->
 
 ---

@@ -3,7 +3,6 @@ set -euo pipefail
 
 API_URL="${API_URL:-http://localhost:8080}"
 APP_URL="${APP_URL:-http://localhost:8080}"
-SPRING_INTERNAL_URL="http://spring-app.demo.svc.cluster.local:8080/api/internal"
 
 PASSED=0
 FAILED=0
@@ -62,8 +61,6 @@ echo "  • JWT authentication"
 echo "  • JWT validation failure"
 echo "  • Role-based authorization"
 echo "  • OAuth2-Proxy browser redirect"
-echo "  • Istio service-to-service mTLS"
-echo "  • Kubernetes ServiceAccount authorization"
 
 # ===========================================================================
 # 1. PUBLIC ENDPOINT
@@ -253,113 +250,6 @@ else
 fi
 
 # ===========================================================================
-# 9. SERVICE A → SPRING
-# ===========================================================================
-
-section "9. Service-to-service — authorized workload"
-
-echo "Scenario:"
-echo "  service-a"
-echo "      ↓"
-echo "  Istio mTLS"
-echo "      ↓"
-echo "  ServiceAccount: service-a/service-a"
-echo "      ↓"
-echo "  AuthorizationPolicy"
-echo "      ↓"
-echo "  /api/internal"
-echo
-
-SERVICE_A_CODE="$(
-  kubectl exec \
-    -n service-a \
-    deploy/service-a \
-    -c service-a \
-    -- \
-    curl -sS -o /dev/null -w '%{http_code}' \
-    "$SPRING_INTERNAL_URL" 2>/dev/null
-)"
-
-if [[ "$SERVICE_A_CODE" == "200" ]]; then
-  pass "service-a/service-a can access /api/internal → HTTP 200"
-else
-  fail "service-a/service-a expected HTTP 200, got HTTP ${SERVICE_A_CODE}"
-fi
-
-# ===========================================================================
-# 10. UNAUTHORIZED WORKLOAD
-# ===========================================================================
-
-section "10. Service-to-service — unauthorized ServiceAccount"
-
-echo "Creating temporary bad-client..."
-echo
-echo "Identity:"
-echo "  namespace:      service-a"
-echo "  ServiceAccount: default"
-echo
-echo "Expected:"
-echo "  mTLS authentication succeeds"
-echo "  workload authorization fails"
-echo "  → HTTP 403"
-echo
-
-BAD_CLIENT="smoke-bad-client"
-
-kubectl delete pod "$BAD_CLIENT" \
-  -n service-a \
-  --ignore-not-found=true \
-  --wait=true >/dev/null
-
-kubectl run "$BAD_CLIENT" \
-  -n service-a \
-  --image=curlimages/curl:8.12.1 \
-  --restart=Never \
-  --command -- sleep 3600 >/dev/null
-
-echo "Waiting for bad-client and its Istio sidecar..."
-
-if kubectl wait \
-  -n service-a \
-  --for=condition=Ready \
-  "pod/${BAD_CLIENT}" \
-  --timeout=90s >/dev/null; then
-
-  BAD_SA="$(
-    kubectl get pod "$BAD_CLIENT" \
-      -n service-a \
-      -o jsonpath='{.spec.serviceAccountName}'
-  )"
-
-  echo "Detected ServiceAccount: ${BAD_SA}"
-
-  BAD_CODE="$(
-    kubectl exec \
-      -n service-a \
-      "$BAD_CLIENT" \
-      -c "$BAD_CLIENT" \
-      -- \
-      curl -sS -o /dev/null -w '%{http_code}' \
-      "$SPRING_INTERNAL_URL" 2>/dev/null || true
-  )"
-
-  if [[ "$BAD_SA" == "default" && "$BAD_CODE" == "403" ]]; then
-    pass "service-a/default is denied access to /api/internal → HTTP 403"
-  else
-    fail "Unauthorized workload expected HTTP 403; SA=${BAD_SA}, HTTP=${BAD_CODE}"
-  fi
-else
-  fail "bad-client did not become Ready"
-fi
-
-echo "Removing temporary bad-client..."
-
-kubectl delete pod "$BAD_CLIENT" \
-  -n service-a \
-  --ignore-not-found=true \
-  --wait=false >/dev/null
-
-# ===========================================================================
 # SUMMARY
 # ===========================================================================
 
@@ -381,10 +271,6 @@ if [[ "$FAILED" -eq 0 ]]; then
   echo "               ✓ JWT authentication"
   echo "               ✓ invalid JWT rejection"
   echo "               ✓ role authorization"
-  echo
-  echo "  Service A → Istio mTLS → AuthorizationPolicy → Spring"
-  echo "               ✓ workload authentication"
-  echo "               ✓ ServiceAccount authorization"
   echo
   exit 0
 else
