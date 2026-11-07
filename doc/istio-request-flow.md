@@ -226,8 +226,10 @@ Live route table `http.8080`:
 
 | Virtual host | Match | Destination | Header rules |
 |---|---|---|---|
-| `api.localhost` | `/` | spring-app.spring-api:8080 | — |
+| `api.localhost` | exact `/reports` | reports-api.reports-api:8080 | request: remove client-sent `x-auth-request-*` |
+| `api.localhost` | `/` | spring-app.spring-api:8080 | request: remove client-sent `x-auth-request-*` |
 | `app.localhost` | prefix `/oauth2/` | oauth2-proxy.identity:4180 | response: remove `x-auth-request-*`, `authorization` |
+| `app.localhost` | exact `/reports` | reports-api.reports-api:8080 | request: remove `cookie` |
 | `app.localhost` | `/` | spring-app.spring-api:8080 | request: remove `cookie` |
 | `keycloak.localhost` | `/` | keycloak.identity:8080 | — |
 

@@ -16,7 +16,7 @@ Press `→` / space to step through clicks; `o` shows the slide overview.
 | Component | Slide | What it shows |
 |---|---|---|
 | `components/ArchDiagram.vue` | 4 | The POC architecture: kind cluster, the istio-system, identity, spring-api and reports-api namespaces, and the links between them (ingress, ext_authz, back channel, routes, istiod config and JWKS) |
-| `components/SeqFlow.vue` | 11, 12 | Authorization code flow: draws all 13 messages (`mode="overview"`), or one per click with a moving packet and the HTTP detail (`mode="steps"`) |
+| `components/SeqFlow.vue` | 11, 12 | Authorization code flow: draws all 13 messages (`mode="overview"`), or one per click with a moving packet and the HTTP detail (`mode="steps"`). Steps 4 and 5 show the real Keycloak login page (`public/keycloak-login.png`) being filled in |
 | `components/FilterChain.vue` | 15 | The real Envoy filter order at the ingress gateway and the Spring sidecar |
 | `components/RequestLanes.vue` | 16 | Six requests race through the same checkpoints until the one that stops them |
 | `components/CookieJourney.vue` | 30 (backup) | The session cookie goes to oauth2-proxy and is stripped before Spring |
@@ -25,10 +25,11 @@ Press `→` / space to step through clicks; `o` shows the slide overview.
 | `components/RefreshLoop.vue` | 28 (backup) | The silent refresh after `--cookie-refresh=4m`, then the same request after the session idled out |
 | `components/SessionTimeline.vue` | 29 (backup) | A working day on a 0–12 h axis: the 10 h hard stop, and a lunch break that hits the 30 min idle timeout |
 | `components/AudFlow.vue` | 31 (backup) | How client scopes and audience mappers fill `aud` (without and with `scope=reports`), and how each sidecar checks it |
+| `components/QaFlow.vue` | 33, 35 (backup) | Generic sequence diagram for Q&A slides; the steps live in `flows/qa-flows.ts` (`logout`, `spoof`) |
 
 A slide that uses one of these declares its click count in its frontmatter (`clicks: 13` and so on).
 
-Running order: theory (1–13), the two doors and the proxies (14–18), a live demo of Door 1 (19), Door 2 (20–21), a live demo of Door 2 (22), wrap-up (23–25), then backup slides (26–32): session lifetimes, the cookie's trip, how the audience gets into the token (31), and audience and scopes Q&A (32).
+Running order: theory (1–13), the two doors and the proxies (14–18), a live demo of Door 1 (19), Door 2 (20–21), a live demo of Door 2 (22), wrap-up (23–25), then backup slides (26–37): session lifetimes, the cookie's trip, how the audience gets into the token (31), audience and scopes Q&A (32), logout (33), Keycloak down (34), faked identity headers (35), debugging a 401/403 (36), and mesh versus app (37). The results on 33–35 were measured on the cluster.
 
 Every slide has speaker notes written to be read aloud (the HTML comment at the end of the slide), in full sentences per click. The main slides (1–25) come to about 32 minutes including both demos (estimate, not rehearsed). `[click]` markers in the notes highlight the current sentence in the presenter view.
 

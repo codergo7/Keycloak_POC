@@ -413,8 +413,8 @@ clicks: 13
 [click] 1. Alice opens the application, and her browser has no cookie yet.
 [click] 2. The gateway asks OAuth2-Proxy whether this request is logged in, and there is no session.
 [click] 3. OAuth2-Proxy redirects the browser to Keycloak and sets a CSRF cookie.
-[click] 4. Keycloak shows its own login page, so our application never sees the password.
-[click] 5. Alice types her password. This is the only moment when she really authenticates.
+[click] 4. Keycloak shows its own login page, so our application never sees the password. On the right is the real page from our demo realm, and the address bar shows keycloak.localhost, not the app.
+[click] 5. Alice types her password and clicks Sign In. This is the only moment when she really authenticates, and the password goes only to Keycloak.
 [click] 6. Keycloak sends the browser back with a one-time code. It does not send any tokens to the browser.
 [click] 7. The code arrives at OAuth2-Proxy, which checks that the state value matches its CSRF cookie.
 [click] 8. OAuth2-Proxy then sends the code and its client secret directly to Keycloak, server to server.
@@ -931,11 +931,11 @@ class: navy
 <div class="h-full flex flex-col justify-center">
   <div class="kicker">Backup</div>
   <h1 class="!text-5xl">For your questions</h1>
-  <p class="text-lg muted max-w-2xl mt-4">How long a login lasts, the silent refresh, the cookie's trip through one request, and audience and scopes.</p>
+  <p class="text-lg muted max-w-2xl mt-4">How long a login lasts, the silent refresh, the cookie's trip, audience and scopes, logout, Keycloak outages, faked headers, debugging, and mesh versus app.</p>
 </div>
 
 <!--
-These are backup slides. I only show them if someone asks how long a login lasts, where the session cookie goes, or how audiences and scopes work.
+These are backup slides. I only show them if someone asks about one of these topics: how long a login lasts, where the session cookie goes, how audiences and scopes work, what logout ends, what happens when Keycloak is down, whether headers can be faked, how to debug a 401 or 403, or whether authorization belongs in the mesh or the app.
 -->
 
 ---
@@ -1099,5 +1099,170 @@ What about one service calling another with the user's token? That is called tok
 Realm roles or client roles? Realm roles are for permissions that mean the same everywhere, like admin. Client roles are for permissions that belong to one API, like the editor role of reports-api.
 
 The same idea exists in every major identity provider: Entra ID uses api://reports/.default, Auth0 has an audience parameter, and RFC 8707 standardizes it as resource indicators. RFC 9068 requires the aud claim in JWT access tokens.
+-->
+
+---
+clicks: 7
+---
+
+<div class="kicker">Backup · logout</div>
+
+# What does logging out really end?
+
+<QaFlow flow="logout" />
+
+<!--
+A common question is what happens when a user logs out. The answer is that three different things hold the login, and the logout button only ends one of them. Every result on this slide was measured on the cluster.
+
+[click] 1. bob signs out of the app. OAuth2-Proxy deletes its own cookie and sends him to the start page. By default, that is all it does.
+
+[click] 2. On his next click there is no cookie, so OAuth2-Proxy sends him to Keycloak, exactly like on his first visit.
+
+[click] 3. But Keycloak's own session is still alive, so Keycloak issues a new code without asking for a password, and bob is logged straight back in. Signing out of the app did not sign him out of Keycloak.
+
+[click] 4. A copy of the old cookie, taken before sign-out, still works. The cookie is the session itself, and OAuth2-Proxy keeps no list of signed-out sessions.
+
+[click] 5. Now an admin ends all of bob's sessions in Keycloak. From this moment his refresh token is refused, so his browser session ends at the next refresh, within 4 minutes.
+
+[click] 6. An access token that was already issued still works, though. Istio checks tokens offline with Keycloak's public keys and never asks whether the session is still alive. The token keeps working until it expires, which is at most 5 minutes here.
+
+[click] 7. To make logout complete, the app should also end the Keycloak session by sending the user on to Keycloak's logout endpoint, keep access tokens short, and store browser sessions on the server if they must be revocable at once. These are options; I have not set them up in this proof of concept.
+-->
+
+---
+
+<div class="kicker">Backup · availability</div>
+
+# What if Keycloak goes down?
+
+<div class="tbl-card mt-2">
+<table class="tbl text-center">
+  <thead><tr><th class="!text-left">Measured on the cluster</th><th v-click="1">Keycloak down</th><th v-click="2">After 4 min</th><th v-click="3">Keycloak back</th></tr></thead>
+  <tbody>
+    <tr><td class="strong !text-left">Existing access token → API</td><td v-click="1" class="code-200">200</td><td v-click="2" class="code-200">200</td><td v-click="3" class="code-200">200</td></tr>
+    <tr><td class="strong !text-left">Existing browser session</td><td v-click="1" class="code-200">200</td><td v-click="2"><span class="code-200">200</span> <span class="text-xs muted">refresh fails, old session kept</span></td><td v-click="3" class="code-200">200</td></tr>
+    <tr><td class="strong !text-left">New login or new token</td><td v-click="1" class="code-403">fails</td><td v-click="2" class="code-403">fails</td><td v-click="3" class="code-200">works</td></tr>
+    <tr><td class="strong !text-left">keycloak.localhost</td><td v-click="1" class="code-403">503</td><td v-click="2" class="code-403">503</td><td v-click="3" class="code-200">200</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="grid grid-cols-2 gap-4 mt-4">
+  <div v-click="4" class="card"><h3>Why it keeps working</h3><p>Istio checks tokens offline with the keys istiod already pushed, and OAuth2-Proxy reads the session from the cookie.</p></div>
+  <div v-click="5" class="card"><h3>The limit</h3><p>Nothing can be refreshed. Once the 5-minute access token inside a session expires, its requests fail until Keycloak is back.</p></div>
+</div>
+
+<!--
+What happens if Keycloak goes down? I measured it by scaling Keycloak to zero for about four minutes.
+
+[click] Right after Keycloak went down, an existing access token still got a 200 from the API, and an existing browser session still worked. New logins and new tokens failed, and the Keycloak host itself answered 503.
+
+[click] After four minutes, OAuth2-Proxy tried to refresh bob's session. The refresh failed with a 503, OAuth2-Proxy logged the error, and it kept serving the old session, so his requests still got a 200.
+
+[click] When Keycloak came back, new tokens worked again within a few seconds. The signing keys did not change, because they live in Postgres, so istiod did not need a restart.
+
+[click] It keeps working because Istio checks tokens offline with the public keys that istiod already pushed to the proxies, and OAuth2-Proxy reads the session from the cookie without calling Keycloak.
+
+[click] The limit is that nothing can be refreshed. Once the 5-minute access token inside a session expires, its requests fail until Keycloak is back. I did not wait that long in the test, so that last part follows from the token lifetime rather than from a measurement.
+-->
+
+---
+clicks: 6
+---
+
+<div class="kicker">Backup · trust boundary</div>
+
+# Can a client fake the identity headers?
+
+<QaFlow flow="spoof" />
+
+<!--
+Spring receives the user's name in a header called X-Auth-Request-User. So what stops a client from simply sending that header itself? I tried it on both doors.
+
+[click] 1. On Door 1, bob sends his own session cookie plus a header that claims he is admin.
+
+[click] 2. The gateway asks OAuth2-Proxy, and ext_authz copies OAuth2-Proxy's answer into the request. A header with the same name is replaced, so the fake value is overwritten with bob's real identity.
+
+[click] 3. Spring sees bob. I measured this on the cluster.
+
+[click] 4. On Door 2 there is no ext_authz, so nothing overwrites the header. Before the fix, Spring received "admin" when alice sent her valid token together with the fake header. I found this while preparing this slide.
+
+[click] 5. The fix is a header rule on the api.localhost routes that removes every X-Auth-Request header a client sends. After the fix, Spring receives nothing in that header.
+
+[click] 6. The rule behind it: identity headers are hints from the gateway, never from the client. Access decisions are made on the verified token, where the sidecar checks the signature and the audience, and the policy checks the roles.
+-->
+
+---
+
+<div class="kicker">Backup · troubleshooting</div>
+
+# Debugging a 401 or 403: read the answer first
+
+<div class="tbl-card mt-2">
+<table class="tbl text-sm">
+  <thead><tr><th>You see</th><th>Who answered</th><th>Usual cause, and what to check</th></tr></thead>
+  <tbody>
+    <tr v-click><td><span class="code-30x">302</span> to Keycloak</td><td>OAuth2-Proxy via ext_authz</td><td>No browser session. Normal before login.</td></tr>
+    <tr v-click><td><span class="code-401">401</span> <span class="mono text-xs">Jwt verification fails</span></td><td>gateway or sidecar <code>jwt_authn</code></td><td>Tampered token, or Istio holds old keys (JWKS race): restart istiod.</td></tr>
+    <tr v-click><td><span class="code-401">401</span> <span class="mono text-xs">Jwt is expired</span></td><td><code>jwt_authn</code></td><td>Token older than 5 minutes: get a new one.</td></tr>
+    <tr v-click><td><span class="code-403">403</span> <span class="mono text-xs">Audiences in Jwt are not allowed</span></td><td>sidecar <code>jwt_authn</code></td><td>Missing <code>aud</code>: check the requested scope with <code>make show-claims-…</code></td></tr>
+    <tr v-click><td><span class="code-403">403</span> <span class="mono text-xs">RBAC: access denied</span></td><td>gateway or sidecar <code>rbac</code></td><td>No ALLOW rule matched: check the roles in the token and the policy's paths.</td></tr>
+    <tr v-click><td><span class="code-403">503</span> after the laptop slept</td><td>gateway</td><td>Mesh certificates expired: restart the pods.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p v-click class="remember text-sm">The gateway's access log names the filter that answered in <code>details=</code>, for example <code>rbac_access_denied_matched_policy[none]</code>.</p>
+
+<!--
+When a request fails, the first thing to read is the answer itself, because the status code and the short message tell you which filter stopped it. One row per click.
+
+[click] A 302 to Keycloak comes from OAuth2-Proxy through ext_authz. It means there is no browser session, which is normal before login.
+
+[click] A 401 with "Jwt verification fails" comes from a JWT check. Either the token was changed, or Istio still holds old signing keys. That is the JWKS race, and restarting istiod fixes it.
+
+[click] A 401 with "Jwt is expired" means the token is older than its 5 minutes, so the client needs a new one.
+
+[click] A 403 with "Audiences in Jwt are not allowed" means the token was not issued for this API. Check which scope the client asked for, for example with make show-claims.
+
+[click] A 403 with "RBAC: access denied" means no ALLOW rule matched. Compare the roles in the token with the paths in the policy.
+
+[click] A 503 after the laptop has been asleep usually means the mesh certificates expired. Restarting the pods fixes it.
+
+[click] The gateway's access log names the filter that answered in the details field, so you do not have to guess.
+-->
+
+---
+
+<div class="kicker">Backup · design choice</div>
+
+# Mesh or app: where should authorization live?
+
+<div class="tbl-card mt-2">
+<table class="tbl text-sm">
+  <thead><tr><th></th><th>In the mesh (Istio policies)</th><th>In the app (code)</th></tr></thead>
+  <tbody>
+    <tr v-click><td class="strong">Best for</td><td>Who may call which path: roles, audience, method</td><td>Rules that need data: “only your own report”, limits, state</td></tr>
+    <tr v-click><td class="strong">Same for every language</td><td>Yes: Spring and FastAPI get identical checks</td><td>No: each framework has its own library and bugs</td></tr>
+    <tr v-click><td class="strong">Change without a redeploy</td><td>Yes: apply a policy, or change a role in Keycloak</td><td>Usually a code change and a release</td></tr>
+    <tr v-click><td class="strong">Cannot see</td><td>The request body or the database</td><td>Nothing: it has the full context</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p v-click class="remember">Use both: the mesh blocks what is never allowed, the app decides what depends on the data.</p>
+
+<!--
+People often ask why we do authorization in the mesh instead of in the application, for example with Spring Security. The honest answer is that you want both, for different kinds of rules.
+
+[click] The mesh is best for deciding who may call which path, based on roles, audience and method. The app is best for rules that need data, such as "you may only edit your own report", spending limits, or the state of an order.
+
+[click] Mesh rules are the same for every language. Spring and FastAPI get exactly the same checks here. In the app, every framework has its own library, configuration and bugs.
+
+[click] Mesh rules can change without a redeploy: you apply a new policy, or change a role in Keycloak, as we did in the demo. In the app, a rule change usually means a code change and a release.
+
+[click] The mesh cannot see the request body or the database, so it cannot make data-dependent decisions. The app has the full context.
+
+[click] So use both. The mesh blocks what is never allowed, and the app decides what depends on the data. This is the same split as the "Four questions, four owners" slide.
 -->
 

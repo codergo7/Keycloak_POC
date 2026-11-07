@@ -263,6 +263,10 @@ Current rules:
 In the browser, `app.localhost/reports` works too: oauth2-proxy asks Keycloak for the `reports`
 scope at login, and the reports sidecar reads the token from `X-Auth-Request-Access-Token`.
 
+On `api.localhost` there is no ext_authz, so nothing would overwrite an `X-Auth-Request-*` header a
+client sends itself. The `api.localhost` routes therefore remove those headers
+(`k8s/app/app.yaml`); on `app.localhost` ext_authz overwrites them with OAuth2-Proxy's answer.
+
 A token without `aud: reports-api` is rejected by the reports sidecar with
 `403 Audiences in Jwt are not allowed`. Envoy answers a wrong audience with 403, not 401.
 

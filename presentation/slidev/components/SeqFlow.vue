@@ -3,6 +3,7 @@
 // mode="overview": all 13 messages draw in one after another.
 // mode="steps":    one message per click, with a packet travelling along it
 //                  and a detail panel on the right (slide needs `clicks: 13`).
+//                  Steps 4 and 5 show the real Keycloak login page (public/keycloak-login.png).
 import { computed } from 'vue'
 import { useSlideContext } from '@slidev/client'
 
@@ -24,6 +25,8 @@ interface Step {
   text: string
   code: string
   chips: string[]
+  // show the login page screenshot: empty, or being filled in
+  form?: 'show' | 'fill'
 }
 
 const steps: Step[] = [
@@ -54,6 +57,7 @@ const steps: Step[] = [
     text: 'Keycloak shows its own login page. The app never sees this page or the password.',
     code: 'GET /realms/demo/protocol/\n    openid-connect/auth?…\n← 200 login page',
     chips: ['authorization endpoint'],
+    form: 'show',
   },
   {
     from: 0, to: 3, kind: 'front', label: '5 · POST username + password',
@@ -61,6 +65,7 @@ const steps: Step[] = [
     text: 'This is the one moment real authentication happens. Keycloak also sets its own SSO cookie.',
     code: 'POST …/login-actions/authenticate\nusername=alice&password=•••\n→ Keycloak SSO cookie set',
     chips: ['AuthN', 'password stays at Keycloak', 'SSO'],
+    form: 'fill',
   },
   {
     from: 3, to: 0, kind: 'front', label: '6 · 302 /oauth2/callback?code=…',
@@ -188,7 +193,22 @@ function lineEnd(s: Step) {
           </div>
           <h3>{{ active.title }}</h3>
           <p>{{ active.text }}</p>
-          <pre class="http">{{ active.code }}</pre>
+          <div v-if="active.form" class="browser">
+            <div class="bar">
+              <span class="dots"><i /><i /><i /></span>
+              <span class="url"><b>keycloak.localhost</b>:8080/realms/demo/…/auth</span>
+            </div>
+            <div class="page">
+              <img src="/keycloak-login.png" alt="Keycloak login page of the demo realm">
+              <template v-if="active.form === 'fill'">
+                <span class="typed user">alice</span>
+                <span class="typed pass">••••••</span>
+                <span class="press" />
+              </template>
+            </div>
+          </div>
+          <pre v-if="active.form === 'fill'" class="http one">POST …/login-actions/authenticate → SSO cookie set</pre>
+          <pre v-else-if="!active.form" class="http">{{ active.code }}</pre>
           <div><span v-for="c in active.chips" :key="c" class="chip">{{ c }}</span></div>
         </div>
         <div v-else key="intro" class="intro">
@@ -239,6 +259,39 @@ function lineEnd(s: Step) {
   font: 0.66rem/1.55 'JetBrains Mono', monospace; white-space: pre; overflow: hidden; margin: 0 0 0.55rem;
 }
 .intro { padding-top: 2.5rem; }
+
+/* the real Keycloak login page, steps 4 and 5 */
+.browser {
+  width: 200px; border-radius: 9px; overflow: hidden; margin: 0 0 0.5rem; background: #1b1d22;
+  box-shadow: 0 10px 28px -14px rgba(20, 33, 61, 0.6); animation: rise 0.45s ease-out;
+}
+.bar { display: flex; align-items: center; gap: 6px; padding: 4px 6px; background: #e6eaf2; }
+.dots { display: flex; gap: 3px; flex: none; }
+.dots i { width: 5px; height: 5px; border-radius: 50%; background: #c5c4c1; }
+.url { font: 500 0.44rem 'JetBrains Mono', monospace; color: #4a5568; background: #fff; border-radius: 4px; padding: 1px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.url b { color: #c2570c; }
+.page { position: relative; }
+.page img { display: block; width: 100%; height: auto; }
+/* positions are fractions of the 1148×1128 screenshot */
+.typed {
+  position: absolute; left: 13.5%; font: 600 7.5px/1 'JetBrains Mono', monospace; color: #fff;
+  overflow: hidden; white-space: nowrap; width: 0; animation: type 0.7s steps(6, end) forwards;
+}
+.typed.user { top: 43.2%; animation-delay: 0.3s; }
+.typed.pass { top: 58.8%; animation-delay: 1.1s; letter-spacing: 1px; }
+.press {
+  position: absolute; left: 12%; width: 78%; top: 73.5%; height: 6.3%; border-radius: 3px;
+  background: rgba(255, 255, 255, 0); animation: press 0.5s 2s ease-out forwards;
+}
+.http.one { white-space: normal; font-size: 0.6rem; padding: 0.45rem 0.7rem; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes type { to { width: 7ch; } }
+@keyframes press {
+  0% { background: rgba(255, 255, 255, 0); }
+  40% { background: rgba(255, 255, 255, 0.45); }
+  100% { background: rgba(255, 255, 255, 0.12); box-shadow: 0 0 0 2px #8db4ff; }
+}
 
 .panel-enter-active, .panel-leave-active { transition: all 0.3s ease; }
 .panel-enter-from { opacity: 0; transform: translateX(16px); }

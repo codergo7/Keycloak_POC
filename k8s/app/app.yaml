@@ -18,6 +18,16 @@ spec:
             host: reports-api.reports-api.svc.cluster.local
             port:
               number: 8080
+      # api.localhost has no ext_authz, so nothing sets these headers here;
+      # remove any a client sends so the apps cannot be fooled by them
+      headers:
+        request:
+          remove:
+            - x-auth-request-user
+            - x-auth-request-email
+            - x-auth-request-groups
+            - x-auth-request-preferred-username
+            - x-auth-request-access-token
 
     # Route all other requests to Spring Boot
     - route:
@@ -25,13 +35,16 @@ spec:
             host: spring-app.spring-api.svc.cluster.local
             port:
               number: 8080
-# the following config didn't work
-# headers are removed in the envoy filter
-      # headers:
-      #   response:
-      #     remove:
-      #       - x-auth-request-access-token
-      #       - authorization
+      # api.localhost has no ext_authz, so nothing sets these headers here;
+      # remove any a client sends so the apps cannot be fooled by them
+      headers:
+        request:
+          remove:
+            - x-auth-request-user
+            - x-auth-request-email
+            - x-auth-request-groups
+            - x-auth-request-preferred-username
+            - x-auth-request-access-token
 
 ---
 apiVersion: v1

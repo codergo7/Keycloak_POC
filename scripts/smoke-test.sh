@@ -284,10 +284,36 @@ else
 fi
 
 # ===========================================================================
-# 10. OAUTH2-PROXY BROWSER FLOW
+# 10. SPOOFED IDENTITY HEADER
 # ===========================================================================
 
-section "10. Browser authentication — OAuth2-Proxy redirect"
+section "10. Trust boundary — client-sent identity headers are removed"
+
+echo "Scenario:"
+echo "  Alice sends a valid token plus X-Auth-Request-User: admin to api.localhost."
+echo "  There is no ext_authz on api.localhost, so the route must remove the header."
+echo
+
+if [[ -n "$ALICE" ]]; then
+  SPOOF_USER="$(curl -sS \
+    -H 'Host: api.localhost' \
+    -H "Authorization: Bearer ${ALICE}" \
+    -H 'X-Auth-Request-User: admin' \
+    "${API_URL}/api/whoami" | jq -r .xAuthRequestUser)"
+  if [[ "$SPOOF_USER" == "null" ]]; then
+    pass "Spoofed X-Auth-Request-User removed before Spring"
+  else
+    fail "Spoofed X-Auth-Request-User reached Spring as '$SPOOF_USER'"
+  fi
+else
+  fail "Spoofed header test skipped because Alice token was unavailable"
+fi
+
+# ===========================================================================
+# 11. OAUTH2-PROXY BROWSER FLOW
+# ===========================================================================
+
+section "11. Browser authentication — OAuth2-Proxy redirect"
 
 echo "Scenario:"
 echo "  Browser has no OAuth2-Proxy session."
