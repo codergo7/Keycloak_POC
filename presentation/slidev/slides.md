@@ -123,7 +123,7 @@ clicks: 5
 <ArchDiagram />
 
 <!--
-This is what we built: one kind cluster on my laptop, with three namespaces.
+This is what I built: one kind cluster on my laptop, with three namespaces.
 
 [click] Browsers and scripts both enter through the Istio ingress gateway on localhost port 8080. The gateway routes three host names, and there is no other way into the cluster.
 
@@ -532,6 +532,13 @@ clicks: 6
 
 <RequestLanes />
 
+<div class="mt-3 flex gap-6 text-sm">
+  <span><b class="code-30x">302</b> go log in</span>
+  <span><b class="code-401">401</b> bad token · a JWT check</span>
+  <span><b class="code-403">403</b> not allowed · an ALLOW check</span>
+  <span><b class="code-200">200</b> OK</span>
+</div>
+
 <!--
 Now we send six different requests through the same checkpoints and see where each one stops.
 
@@ -542,7 +549,7 @@ Now we send six different requests through the same checkpoints and see where ea
 [click] alice's valid token on the admin endpoint reaches the sidecar's ALLOW check and gets a 403, because she has no admin role.
 [click] The admin token passes every check and gets a 200.
 
-The pattern is simple: a 401 always comes from a JWT check, and a 403 always comes from an ALLOW check.
+The legend at the bottom sums up the codes. A 302 sends you to log in, and a 200 means OK. A 401 means the token is bad, and it always comes from a JWT check. A 403 means you are not allowed, and it always comes from an ALLOW check.
 -->
 
 ---
@@ -640,26 +647,6 @@ Let's start with Door 1. For app.localhost, Istio asks OAuth2-Proxy on every req
 -->
 
 ---
-clicks: 5
----
-
-<div class="kicker">Door 1 · follow the cookie</div>
-
-# The cookie goes to the checker, not to the app
-
-<CookieJourney />
-
-<!--
-Let's follow the session cookie through one request.
-
-[click] 1. The browser sends the session cookie to the gateway.
-[click] 2. The gateway passes the cookie to OAuth2-Proxy, which uses it to check the session.
-[click] 3. OAuth2-Proxy answers 200 and returns the identity headers to the gateway.
-[click] 4. The router removes the cookie, and only the identity headers continue to Spring.
-[click] 5. On the way back, no identity header is returned to the browser. The browser only gets a new cookie when the session was refreshed.
--->
-
----
 clicks: 7
 ---
 
@@ -670,7 +657,7 @@ clicks: 7
 <HeaderGates />
 
 <!--
-Now let's look at every sensitive header on this trip and the rule that decides what happens to it. Green headers pass, and red headers are stopped.
+Now let's follow one browser request and look at every sensitive header on the way, and the rule that decides what happens to it. Green headers pass, and red headers are stopped.
 
 [click] 1. When the gateway asks OAuth2-Proxy, the includeRequestHeadersInCheck rule sends only the cookie and the Authorization header.
 
@@ -945,11 +932,11 @@ class: navy
 <div class="h-full flex flex-col justify-center">
   <div class="kicker">Backup</div>
   <h1 class="!text-5xl">How long can alice stay logged in?</h1>
-  <p class="text-lg muted max-w-2xl mt-4">Token, session and cookie lifetimes, the silent refresh, and a working day on a timeline. For questions after the talk.</p>
+  <p class="text-lg muted max-w-2xl mt-4">Token, session and cookie lifetimes, the silent refresh, a working day on a timeline, and the cookie's trip through one request. For questions after the talk.</p>
 </div>
 
 <!--
-These are backup slides. I only show them if someone asks how long a login lasts.
+These are backup slides. I only show them if someone asks how long a login lasts, or where the session cookie goes.
 -->
 
 ---
@@ -1025,4 +1012,24 @@ So how long can Alice stay logged in without typing her password?
 [click] In the second scenario, Alice takes a 45-minute lunch at 3 hours. Keycloak ends the session at 3:30. The cookie is still valid but can no longer be refreshed, so her first click at 3:45 shows the login form.
 
 [click] The longest possible session is 10 hours, and 30 idle minutes end it sooner. The 8-hour cookie never decides.
+-->
+
+---
+clicks: 5
+---
+
+<div class="kicker">Backup · follow the cookie</div>
+
+# The cookie goes to the checker, not to the app
+
+<CookieJourney />
+
+<!--
+Let's follow the session cookie through one request.
+
+[click] 1. The browser sends the session cookie to the gateway.
+[click] 2. The gateway passes the cookie to OAuth2-Proxy, which uses it to check the session.
+[click] 3. OAuth2-Proxy answers 200 and returns the identity headers to the gateway.
+[click] 4. The router removes the cookie, and only the identity headers continue to Spring.
+[click] 5. On the way back, no identity header is returned to the browser. The browser only gets a new cookie when the session was refreshed.
 -->
