@@ -44,7 +44,7 @@ const steps: Step[] = [
     from: 1, to: 2, kind: 'back', row: 2, label: 'POST /token refresh_token',
     title: 'Back channel to Keycloak',
     text: 'oauth2-proxy sends the refresh token from inside the cookie, with its client secret. The browser never sees this call.',
-    code: 'POST /realms/poc/protocol/openid-connect/token\ngrant_type=refresh_token\nrefresh_token=eyJ…\nclient_id=oauth2-proxy&client_secret=…',
+    code: 'POST /realms/demo/protocol/openid-connect/token\ngrant_type=refresh_token\nrefresh_token=eyJ…\nclient_id=oauth2-proxy&client_secret=…',
     chips: ['back channel', 'confidential client'],
   },
   {
@@ -79,7 +79,7 @@ const steps: Step[] = [
     from: 0, to: 2, kind: 'fail', row: 5, label: 'GET /auth → login form',
     title: 'Keycloak can’t help either',
     text: 'KEYCLOAK_IDENTITY points to the same dead session, so there is no silent SSO. Alice types her password again.',
-    code: 'GET /realms/poc/protocol/openid-connect/auth\nCookie: KEYCLOAK_IDENTITY=…  (session gone)\n← 200 login form\nSet-Cookie: KEYCLOAK_IDENTITY=; Max-Age=0',
+    code: 'GET /realms/demo/protocol/openid-connect/auth\nCookie: KEYCLOAK_IDENTITY=…  (session gone)\n← 200 login form\nSet-Cookie: KEYCLOAK_IDENTITY=; Max-Age=0',
     chips: ['user interaction needed'],
   },
 ]

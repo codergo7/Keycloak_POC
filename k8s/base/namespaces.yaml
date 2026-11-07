@@ -1,18 +1,23 @@
+# Keycloak, its database and OAuth2-Proxy: everything that knows who you are
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: iam
+  name: identity
   labels:
     istio-injection: enabled
 ---
+# Spring Boot app; named after its Keycloak client and token audience
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: demo
+  name: spring-api
   labels:
     istio-injection: enabled
-
-
-
-
-
+---
+# FastAPI reports app; named after its Keycloak client and token audience
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reports-api
+  labels:
+    istio-injection: enabled

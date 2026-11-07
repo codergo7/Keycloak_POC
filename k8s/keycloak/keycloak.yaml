@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: keycloak-admin
-  namespace: iam
+  namespace: identity
 type: Opaque
 stringData:
   KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -12,7 +12,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: keycloak
-  namespace: iam
+  namespace: identity
 spec:
   selector:
     app: keycloak
@@ -25,7 +25,7 @@ apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: keycloak
-  namespace: iam
+  namespace: identity
 spec:
   hosts:
     - keycloak.localhost
@@ -34,7 +34,7 @@ spec:
   http:
     - route:
         - destination:
-            host: keycloak.iam.svc.cluster.local
+            host: keycloak.identity.svc.cluster.local
             port:
               number: 8080
 
@@ -43,7 +43,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: keycloak
-  namespace: iam
+  namespace: identity
 spec:
   replicas: 1
   selector:
@@ -69,7 +69,7 @@ spec:
             - name: KC_DB
               value: postgres
             - name: KC_DB_URL
-              value: jdbc:postgresql://postgres.iam.svc.cluster.local:5432/keycloak
+              value: jdbc:postgresql://postgres.identity.svc.cluster.local:5432/keycloak
             - name: KC_DB_USERNAME
               valueFrom:
                 secretKeyRef:

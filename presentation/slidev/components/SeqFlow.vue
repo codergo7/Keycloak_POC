@@ -38,7 +38,7 @@ const steps: Step[] = [
     from: 1, to: 2, kind: 'mesh', label: '2 · logged in?',
     title: '“Is this request logged in?”',
     text: 'Envoy ext_authz sends a check request with only the cookie and authorization headers to oauth2-proxy:4180.',
-    code: 'ext_authz check\n→ oauth2-proxy.iam:4180\n  cookie: (none)\n← no session',
+    code: 'ext_authz check\n→ oauth2-proxy.identity:4180\n  cookie: (none)\n← no session',
     chips: ['ext_authz', 'no session yet'],
   },
   {
@@ -52,7 +52,7 @@ const steps: Step[] = [
     from: 0, to: 3, kind: 'front', label: '4 · GET /auth?response_type=code',
     title: 'The browser follows the redirect',
     text: 'Keycloak shows its own login page. The app never sees this page or the password.',
-    code: 'GET /realms/poc/protocol/\n    openid-connect/auth?…\n← 200 login page',
+    code: 'GET /realms/demo/protocol/\n    openid-connect/auth?…\n← 200 login page',
     chips: ['authorization endpoint'],
   },
   {
@@ -80,7 +80,7 @@ const steps: Step[] = [
     from: 2, to: 3, kind: 'back', label: '8 · POST /token + secret',
     title: 'Back channel: code in…',
     text: 'Server to server, never through the browser. OAuth2-Proxy proves who it is with its client secret.',
-    code: 'POST /realms/poc/protocol/\n     openid-connect/token\ngrant_type=authorization_code\n&code=9f3e…c71\n&client_id=oauth2-proxy\n&client_secret=•••',
+    code: 'POST /realms/demo/protocol/\n     openid-connect/token\ngrant_type=authorization_code\n&code=9f3e…c71\n&client_id=oauth2-proxy\n&client_secret=•••',
     chips: ['back channel', 'token endpoint', 'client secret'],
   },
   {

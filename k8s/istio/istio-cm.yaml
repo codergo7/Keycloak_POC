@@ -59,7 +59,7 @@ data:
       # NEW: oauth2-proxy external authorization
       - name: oauth2-proxy
         envoyExtAuthzHttp:
-          service: oauth2-proxy.iam.svc.cluster.local
+          service: oauth2-proxy.identity.svc.cluster.local
           port: 4180
 
           includeRequestHeadersInCheck:

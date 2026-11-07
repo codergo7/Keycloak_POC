@@ -1,0 +1,62 @@
+# The reports API only accepts tokens issued for it (aud reports-api).
+# A client gets that audience by asking for scope=reports.
+# Scripts send the token as Authorization: Bearer; browser requests carry it
+# in X-Auth-Request-Access-Token, added by OAuth2-Proxy at the gateway.
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: reports-jwt
+  namespace: reports-api
+spec:
+  selector:
+    matchLabels:
+      app: reports-api
+  jwtRules:
+    - issuer: http://keycloak.localhost:8080/realms/demo
+      jwksUri: http://keycloak.identity.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+      audiences:
+        - reports-api
+      forwardOriginalToken: true
+      fromHeaders:
+        - name: Authorization
+          prefix: "Bearer "
+        - name: X-Auth-Request-Access-Token
+
+---
+
+# Access is decided by the reports-api client roles, not by realm roles.
+# editor is a composite role that contains viewer.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: reports-authorization
+  namespace: reports-api
+spec:
+  selector:
+    matchLabels:
+      app: reports-api
+  action: ALLOW
+  rules:
+    # Read reports
+    - from:
+        - source:
+            requestPrincipals: ["*"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/reports"]
+      when:
+        - key: request.auth.claims[resource_access][reports-api][roles]
+          values: ["viewer"]
+
+    # Create reports
+    - from:
+        - source:
+            requestPrincipals: ["*"]
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/reports"]
+      when:
+        - key: request.auth.claims[resource_access][reports-api][roles]
+          values: ["editor"]

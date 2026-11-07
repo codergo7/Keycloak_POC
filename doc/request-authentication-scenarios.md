@@ -283,7 +283,6 @@ AUTHENTICATED ✓
  │
  │ roles:
  │ developer
- │ premium
  │ user
  ▼
 AuthorizationPolicy

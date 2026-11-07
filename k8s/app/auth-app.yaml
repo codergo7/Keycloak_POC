@@ -3,14 +3,14 @@ apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: keycloak-jwt
-  namespace: demo
+  namespace: spring-api
 spec:
   selector:
     matchLabels:
       app: spring-app
   jwtRules:
-    - issuer: http://keycloak.localhost:8080/realms/poc
-      jwksUri: http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/certs
+    - issuer: http://keycloak.localhost:8080/realms/demo
+      jwksUri: http://keycloak.identity.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
       audiences:
         - spring-api
       forwardOriginalToken: true
@@ -36,7 +36,7 @@ apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: spring-workload-authorization
-  namespace: demo
+  namespace: spring-api
 spec:
   selector:
     matchLabels:

@@ -30,8 +30,8 @@ const gateway: Stage[] = [
     detail: 'Applies route header rules (e.g. remove cookie), then sends the request to the Spring pod.' },
 ]
 const sidecar: Stage[] = [
-  { name: 'JWT', res: 'RequestAuthn', ask: 'aud = spring-api?', fail: '401', failClass: 'code-401',
-    detail: 'keycloak-jwt reads Authorization: Bearer and X-Auth-Request-Access-Token, and requires audience spring-api.' },
+  { name: 'JWT', res: 'RequestAuthn', ask: 'aud = spring-api?', fail: '401 / 403', failClass: 'code-401',
+    detail: 'keycloak-jwt reads Authorization: Bearer and X-Auth-Request-Access-Token. A bad token is 401; a token for another audience is 403 (Audiences in Jwt are not allowed).' },
   { name: 'ALLOW', res: 'AuthzPolicy ALLOW', ask: 'Role claim ok?', fail: '403', failClass: 'code-403',
     detail: 'spring-workload-authorization: path + realm role claim (realm_access.roles). No matching rule, 403.' },
   { name: 'Spring', res: 'app :8080', ask: 'Business logic',

@@ -16,7 +16,7 @@ apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: spring-debug-access-logs
-  namespace: demo
+  namespace: spring-api
 spec:
   selector:
     matchLabels:

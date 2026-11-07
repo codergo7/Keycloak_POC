@@ -1,4 +1,4 @@
-# Kind + Istio + Keycloak + oauth2-proxy + Spring Boot IAM POC
+# Kind + Istio + Keycloak + oauth2-proxy + Spring Boot + FastAPI IAM POC
 
 A local IAM playground for learning Keycloak, OAuth 2.0/OIDC, oauth2-proxy, JWT validation,
 Istio authorization and application-facing identity headers.
@@ -22,12 +22,18 @@ Browser
                                 + RequestAuthentication (JWKS from Keycloak)
                                 + AuthorizationPolicy (claims/roles)
                                 |
-                                +------------------------> Spring Boot
+                                +------------------------> Spring Boot  (/api/*)
+                                |
+                                +------------------------> FastAPI reports API  (/reports)
+                                                           needs aud reports-api + reports-api client roles
 ```
 
 Namespaces:
-- `iam`: Keycloak, PostgreSQL, oauth2-proxy, Istio Gateway/VirtualServices
-- `demo`: Spring Boot test application
+- `identity`: Keycloak, PostgreSQL, oauth2-proxy
+- `spring-api`: Spring Boot test application
+- `reports-api`: FastAPI reports API (`reports/`)
+
+Each app namespace has the same name as the app's Keycloak client and token audience.
 - `istio-system`: Istio control plane + ingress gateway + JWT policy
 
 ## Requirements
@@ -106,29 +112,30 @@ make shell-app
 Inside it:
 
 ```bash
-curl -s http://keycloak.iam.svc.cluster.local:8080/realms/poc/.well-known/openid-configuration | jq .
-curl -s http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/certs | jq .
+curl -s http://keycloak.identity.svc.cluster.local:8080/realms/demo/.well-known/openid-configuration | jq .
+curl -s http://keycloak.identity.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs | jq .
 ```
 
 This is useful for understanding front-channel vs back-channel URLs and checking service-mesh connectivity.
 
 ## Preconfigured Keycloak concepts
 
-The imported `poc` realm gives you material to inspect immediately:
+The imported `demo` realm gives you material to inspect immediately:
 
-- Realm: `poc`
-- Realm roles: `user`, `developer`, `premium`, `admin`
-- Composite realm role: `power-user` = `developer` + `premium`
-- Groups: `/engineering`, `/engineering/platform`, `/admins`
-- Users: `alice`, `bob`, `admin`
+- Realm: `demo`
+- Realm roles: `user`, `developer`, `admin`
+- Client roles of `reports-api`: `viewer`, `editor` (composite: `editor` contains `viewer`)
+- Groups: `/engineering` (developer), `/finance` (reports viewer), `/finance/managers` (reports editor), `/admins` (admin)
+- Users: `alice` (`/engineering`), `bob` (`/finance`), `admin` (`/admins`)
 - Client scope: `groups`
-- Client scope: `app-audience`
+- Client scope: `app-audience` (default, adds `spring-api` to `aud`)
+- Client scope: `reports` (optional on `cli-client`, adds `reports-api` to `aud`)
 - Protocol mapper: group-membership mapper
 - Protocol mapper: audience mapper
 - Confidential client: `cli-client`
 - Service account enabled on `cli-client`
 - Browser/OIDC client: `oauth2-proxy`
-- Bearer-only resource client: `spring-api`
+- Bearer-only resource clients: `spring-api`, `reports-api`
 - Direct Access Grant enabled only for the CLI lab client
 
 Inspect Alice's JWT and find:
@@ -137,7 +144,19 @@ Inspect Alice's JWT and find:
 - `azp`
 - `scope`
 - `realm_access.roles`
+- `resource_access.reports-api.roles` (bob)
 - `groups`
+
+Compare `aud` with and without the reports scope:
+
+```bash
+./scripts/get-token.sh bob bob            # aud: spring-api
+./scripts/get-token.sh bob bob reports    # aud: spring-api, reports-api  (or: make token-bob-reports)
+```
+
+The `audience resolve` mapper is removed from the `roles` scope on purpose: it would add
+`reports-api` to `aud` for anyone who has a `reports-api` role, and the audience must come
+only from the `reports` scope.
 - `preferred_username`
 - token timestamps (`iat`, `exp`)
 
@@ -147,14 +166,14 @@ Discovery:
 
 ```bash
 curl -s -H 'Host: keycloak.localhost' \
-  http://localhost:8080/realms/poc/.well-known/openid-configuration | jq .
+  http://localhost:8080/realms/demo/.well-known/openid-configuration | jq .
 ```
 
 JWKS:
 
 ```bash
 curl -s -H 'Host: keycloak.localhost' \
-  http://localhost:8080/realms/poc/protocol/openid-connect/certs | jq .
+  http://localhost:8080/realms/demo/protocol/openid-connect/certs | jq .
 ```
 
 Password grant (lab only):
@@ -166,7 +185,7 @@ curl -s -H 'Host: keycloak.localhost' \
   -d username=alice \
   -d password=alice \
   -d grant_type=password \
-  http://localhost:8080/realms/poc/protocol/openid-connect/token | jq .
+  http://localhost:8080/realms/demo/protocol/openid-connect/token | jq .
 ```
 
 Client credentials / service account:
@@ -176,7 +195,7 @@ curl -s -H 'Host: keycloak.localhost' \
   -d client_id=cli-client \
   -d client_secret=cli-secret \
   -d grant_type=client_credentials \
-  http://localhost:8080/realms/poc/protocol/openid-connect/token | jq .
+  http://localhost:8080/realms/demo/protocol/openid-connect/token | jq .
 ```
 
 UserInfo:
@@ -185,7 +204,7 @@ UserInfo:
 TOKEN="$(make -s token-alice)"
 curl -s -H 'Host: keycloak.localhost' \
   -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8080/realms/poc/protocol/openid-connect/userinfo | jq .
+  http://localhost:8080/realms/demo/protocol/openid-connect/userinfo | jq .
 ```
 
 Token introspection:
@@ -195,7 +214,7 @@ TOKEN="$(make -s token-alice)"
 curl -s -H 'Host: keycloak.localhost' \
   -u cli-client:cli-secret \
   -d token="$TOKEN" \
-  http://localhost:8080/realms/poc/protocol/openid-connect/token/introspect | jq .
+  http://localhost:8080/realms/demo/protocol/openid-connect/token/introspect | jq .
 ```
 
 Logout, refresh tokens, offline tokens, consent, required actions, OTP/WebAuthn,
@@ -237,19 +256,29 @@ Current rules:
 - `/api/public`: anonymous allowed.
 - `/api/user`, `/api/whoami`, `/api/headers`: any valid JWT.
 - `/api/admin`: valid JWT plus `admin` in `realm_access.roles`.
+- `/reports` (GET, POST): any valid JWT at the ingress. The reports sidecar then requires
+  `aud: reports-api`, `viewer` in `resource_access.reports-api.roles` for GET and `editor` for POST
+  (`k8s/reports/auth-reports.yaml`).
+
+In the browser, `app.localhost/reports` works too: oauth2-proxy asks Keycloak for the `reports`
+scope at login, and the reports sidecar reads the token from `X-Auth-Request-Access-Token`.
+
+A token without `aud: reports-api` is rejected by the reports sidecar with
+`403 Audiences in Jwt are not allowed`. Envoy answers a wrong audience with 403, not 401.
 
 This deliberately separates authentication (is the JWT valid?) from authorization
 (is this identity allowed to call this endpoint?).
 
 ## Inspecting the sidecars
 
-Both `iam` and `demo` namespaces have sidecar injection enabled.
+The `identity`, `spring-api` and `reports-api` namespaces have sidecar injection enabled.
 
 ```bash
-kubectl get pods -n iam
-kubectl get pods -n demo
+kubectl get pods -n identity
+kubectl get pods -n spring-api
+kubectl get pods -n reports-api
 istioctl proxy-status
-istioctl proxy-config clusters deploy/spring-app.demo
+istioctl proxy-config clusters deploy/spring-app.spring-api
 ```
 
 ## Suggested Keycloak learning progression

@@ -8,11 +8,11 @@ spec:
     matchLabels:
       app: istio-ingressgateway
   jwtRules:
-    - issuer: "http://keycloak.localhost:8080/realms/poc"
-      jwksUri: "http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/certs"
+    - issuer: "http://keycloak.localhost:8080/realms/demo"
+      jwksUri: "http://keycloak.identity.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs"
       forwardOriginalToken: true
     - issuer: "http://keycloak.localhost:8080/realms/master"
-      jwksUri: "http://keycloak.iam.svc.cluster.local:8080/realms/master/protocol/openid-connect/certs"
+      jwksUri: "http://keycloak.identity.svc.cluster.local:8080/realms/master/protocol/openid-connect/certs"
       forwardOriginalToken: true
 
 ---
@@ -103,4 +103,14 @@ spec:
               - /api/headers
               - /api/admin
 
-
+    # JWT-authenticated reports API requests
+    - from:
+        - source:
+            requestPrincipals: ["*"]
+      to:
+        - operation:
+            hosts:
+              - api.localhost
+              - "api.localhost:*"
+            methods: ["GET", "POST"]
+            paths: ["/reports"]

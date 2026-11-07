@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: oauth2-proxy-secret
-  namespace: iam
+  namespace: identity
 type: Opaque
 stringData:
   client-secret: oauth2-proxy-secret
@@ -12,7 +12,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: oauth2-proxy
-  namespace: iam
+  namespace: identity
 spec:
   selector:
     app: oauth2-proxy
@@ -26,7 +26,7 @@ apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: oauth2-proxy
-  namespace: iam
+  namespace: identity
 spec:
   hosts:
     - app.localhost
@@ -40,7 +40,7 @@ spec:
             prefix: /oauth2/
       route:
         - destination:
-            host: oauth2-proxy.iam.svc.cluster.local
+            host: oauth2-proxy.identity.svc.cluster.local
             port:
               number: 4180
       # --set-xauthrequest makes oauth2-proxy return identity/token headers;
@@ -55,10 +55,24 @@ spec:
             - x-auth-request-access-token
             - authorization
 
+    # Reports API (FastAPI) for the browser; same cookie rule as Spring
+    - match:
+        - uri:
+            exact: /reports
+      route:
+        - destination:
+            host: reports-api.reports-api.svc.cluster.local
+            port:
+              number: 8080
+      headers:
+        request:
+          remove:
+            - cookie
+
     # Route all other requests to Spring Boot
     - route:
         - destination:
-            host: spring-app.demo.svc.cluster.local
+            host: spring-app.spring-api.svc.cluster.local
             port:
               number: 8080
       # The oauth2-proxy session cookie is only for ext_authz, which runs
@@ -72,7 +86,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: oauth2-proxy
-  namespace: iam
+  namespace: identity
 spec:
   replicas: 1
   selector:
@@ -98,15 +112,17 @@ spec:
             - --cookie-refresh=4m
             - --cookie-expire=8h
             - --email-domain=*
-            - --oidc-issuer-url=http://keycloak.localhost:8080/realms/poc
+            - --oidc-issuer-url=http://keycloak.localhost:8080/realms/demo
             - --skip-oidc-discovery=true
-            - --login-url=http://keycloak.localhost:8080/realms/poc/protocol/openid-connect/auth
-            - --redeem-url=http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/token
-            - --oidc-jwks-url=http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/certs
-            - --profile-url=http://keycloak.iam.svc.cluster.local:8080/realms/poc/protocol/openid-connect/userinfo
+            - --login-url=http://keycloak.localhost:8080/realms/demo/protocol/openid-connect/auth
+            - --redeem-url=http://keycloak.identity.svc.cluster.local:8080/realms/demo/protocol/openid-connect/token
+            - --oidc-jwks-url=http://keycloak.identity.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs
+            - --profile-url=http://keycloak.identity.svc.cluster.local:8080/realms/demo/protocol/openid-connect/userinfo
             - --redirect-url=http://app.localhost:8080/oauth2/callback
-            - --scope=openid profile email groups app-audience
-            #- --upstream=http://spring-app.demo.svc.cluster.local:8080
+            # reports adds reports-api to the access token audience, so the
+            # browser session can also call the reports API through app.localhost
+            - --scope=openid profile email groups app-audience reports
+            #- --upstream=http://spring-app.spring-api.svc.cluster.local:8080
             - --upstream=static://200
             - --pass-access-token=true
             - --pass-authorization-header=true

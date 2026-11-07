@@ -211,9 +211,9 @@ Algorithm (per request):
 
 ```
 1. Take the Host header (port stripped) → find the virtual host.
-      api.localhost      → VirtualService demo/api
-      app.localhost      → VirtualService iam/oauth2-proxy
-      keycloak.localhost → VirtualService iam/keycloak
+      api.localhost      → VirtualService spring-api/api
+      app.localhost      → VirtualService identity/oauth2-proxy
+      keycloak.localhost → VirtualService identity/keycloak
    No match → 404.
 2. Walk the http[] routes of that VirtualService top to bottom.
    The FIRST route whose match[] matches (uri prefix, headers, method...) wins.
@@ -226,10 +226,10 @@ Live route table `http.8080`:
 
 | Virtual host | Match | Destination | Header rules |
 |---|---|---|---|
-| `api.localhost` | `/` | spring-app.demo:8080 | — |
-| `app.localhost` | prefix `/oauth2/` | oauth2-proxy.iam:4180 | response: remove `x-auth-request-*`, `authorization` |
-| `app.localhost` | `/` | spring-app.demo:8080 | request: remove `cookie` |
-| `keycloak.localhost` | `/` | keycloak.iam:8080 | — |
+| `api.localhost` | `/` | spring-app.spring-api:8080 | — |
+| `app.localhost` | prefix `/oauth2/` | oauth2-proxy.identity:4180 | response: remove `x-auth-request-*`, `authorization` |
+| `app.localhost` | `/` | spring-app.spring-api:8080 | request: remove `cookie` |
+| `keycloak.localhost` | `/` | keycloak.identity:8080 | — |
 
 ### 4.3 AuthorizationPolicy — general evaluation rules
 
@@ -301,7 +301,7 @@ with a bearer token, and non-browser clients such as curl, skip it.
 The ext_authz call (settings from the mesh config in `istio-cm.yaml`):
 
 ```
-1. Build a check request to oauth2-proxy.iam:4180 with the same method/path
+1. Build a check request to oauth2-proxy.identity:4180 with the same method/path
    and only these request headers:  cookie, authorization
                                     (includeRequestHeadersInCheck)
 2. oauth2-proxy (upstream static://200) decides:
@@ -365,10 +365,10 @@ that has no token. Requiring a token is the job of an AuthorizationPolicy
 
 The two RequestAuthentications in this repo:
 
-| | `istio-system/demo-jwt-valiation` | `demo/keycloak-jwt` |
+| | `istio-system/demo-jwt-valiation` | `spring-api/keycloak-jwt` |
 |---|---|---|
 | Applies to | ingress gateway (`app: istio-ingressgateway`) | Spring sidecar (`app: spring-app`) |
-| Issuers | realms `poc` and `master` | realm `poc` |
+| Issuers | realms `demo` and `master` | realm `demo` |
 | Audience check | none | must contain `spring-api` |
 | Token read from | `Authorization: Bearer` (default) | `Authorization: Bearer` **and** `X-Auth-Request-Access-Token` |
 | Used by | `requestPrincipals` in `ingress-authorization` | `requestPrincipals` and `request.auth.claims[realm_access][roles]` in `spring-workload-authorization` |
@@ -446,7 +446,7 @@ Browser ── GET app.localhost/api/whoami (no cookie, UA Mozilla) ──► Ga
   [2] route: app.localhost "/" → spring-app
   [3] CUSTOM rules match
   [4] ext_authz → oauth2-proxy: no session → 302 to Keycloak
-◄── 302 Location: keycloak.localhost/realms/poc/protocol/openid-connect/auth
+◄── 302 Location: keycloak.localhost/realms/demo/protocol/openid-connect/auth
     Set-Cookie: _oauth2_proxy_csrf=...
 
 Browser ── GET keycloak.localhost/.../auth ──► Gateway
@@ -491,7 +491,7 @@ Spring app sees x-auth-request-user/email and the token header, but no cookie.
 curl ── GET api.localhost/api/admin  Authorization: Bearer <alice token> ──► Gateway
   [2] route: api.localhost → spring-app
   [3] CUSTOM rules do not match (host api.localhost)
-  [5] jwt_authn validates the token (poc realm) → principal set
+  [5] jwt_authn validates the token (demo realm) → principal set
   [6] ALLOW rule 4 (requestPrincipals) matches
   [7] forward to the Spring pod
 
@@ -514,7 +514,7 @@ With a corrupted token:
 | `401 Jwt verification fails` | gateway or sidecar `jwt_authn` | bad signature, or Istio has stale/placeholder JWKS (see 8) |
 | `401 Jwt is expired` | `jwt_authn` | token `exp` passed |
 | `401 Jwt issuer is not configured` | `jwt_authn` | token issuer not in any jwtRule |
-| `401 Audiences in Jwt are not allowed` | sidecar `jwt_authn` | token lacks `aud: spring-api` |
+| `403 Audiences in Jwt are not allowed` | sidecar `jwt_authn` | token lacks the audience the sidecar requires (`spring-api`, or `reports-api` for the reports API). Envoy answers this with 403, not 401 |
 | `403 RBAC: access denied` | gateway or sidecar `rbac` | no ALLOW rule matched |
 | `404` | gateway | Host/path has no route |
 
@@ -549,7 +549,7 @@ The access log shows which proxy answered and why, in `details=`. Examples:
 ```bash
 # Access logs (format set in istio-cm.yaml: status, details, user, jwt_subject)
 kubectl -n istio-system logs deploy/istio-ingressgateway --tail=20
-kubectl -n demo logs deploy/spring-app -c istio-proxy --tail=20
+kubectl -n spring-api logs deploy/spring-app -c istio-proxy --tail=20
 
 # Filter chain, routes, JWKS as Envoy really sees them
 kubectl -n istio-system exec deploy/istio-ingressgateway -- \
@@ -558,8 +558,8 @@ istioctl proxy-config listeners deploy/istio-ingressgateway -n istio-system
 istioctl proxy-config routes    deploy/istio-ingressgateway -n istio-system -o json
 
 # Which policies apply to a pod
-istioctl x describe pod "$(kubectl -n demo get pod -l app=spring-app \
-  -o jsonpath='{.items[0].metadata.name}')" -n demo
+istioctl x describe pod "$(kubectl -n spring-api get pod -l app=spring-app \
+  -o jsonpath='{.items[0].metadata.name}')" -n spring-api
 
 # JWKS fetch problems
 kubectl -n istio-system logs deploy/istiod | grep -i jwks

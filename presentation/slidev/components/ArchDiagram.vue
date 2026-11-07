@@ -14,9 +14,9 @@ const wires = [
   { d: 'M730 90 H760', at: 2 },
   { d: 'M345 130 H385 V90 H415', at: 3 },
   { d: 'M555 90 H600', at: 3, cls: 'orange' },
-  { d: 'M345 165 H470 V253 H590', at: 4 },
+  { d: 'M345 170 H385 V250 H420', at: 4 },
+  { d: 'M385 250 V304 H640 V250 H670', at: 4 },
   { d: 'M265 240 V186', at: 5, cls: 'purple' },
-  { d: 'M345 268 H590', at: 5, cls: 'purple' },
   { d: 'M345 250 H375 V150 H665 V120', at: 5, cls: 'purple' },
 ]
 
@@ -25,18 +25,17 @@ const labels = [
   { t: 'keycloak.localhost', x: 470, y: 32, at: 2 },
   { t: 'ext_authz', x: 349, y: 137, at: 3 },
   { t: 'back channel', x: 540, y: 124, at: 3, cls: 'orange' },
-  { t: 'app · api routes', x: 478, y: 198, at: 4 },
+  { t: 'app · api routes', x: 440, y: 290, at: 4 },
   { t: 'config', x: 272, y: 204, at: 5, cls: 'purple' },
-  { t: 'routes + policies', x: 440, y: 274, at: 5, cls: 'purple' },
   { t: 'JWKS keys', x: 672, y: 128, at: 5, cls: 'purple' },
 ]
 
 const notes = [
-  'One kind cluster on a laptop, with three namespaces. Click to fill it in.',
+  'One kind cluster on a laptop, with four namespaces. Click to fill it in.',
   'Browser and scripts both enter through one Istio ingress gateway on localhost:8080. It routes three hosts.',
-  'iam: Keycloak with realm poc, storing its data in Postgres. Logins happen at keycloak.localhost.',
+  'identity: Keycloak with realm demo, storing its data in Postgres. Logins happen at keycloak.localhost.',
   'OAuth2-Proxy: the gateway asks it about every app.localhost request. It swaps the login code for tokens with Keycloak on the back channel.',
-  'demo: the Spring Boot app with its Envoy sidecar. Both app.localhost and api.localhost end here.',
+  'spring-api and reports-api: one namespace per app, named after its Keycloak client and token audience.',
   'istiod pushes routes and policies to the gateway and every sidecar, and fetches Keycloak\'s public keys (JWKS) to check tokens.',
 ]
 </script>
@@ -46,8 +45,9 @@ const notes = [
     <div class="stage">
       <div class="cluster"><span>kind cluster · localhost:8080</span></div>
       <div class="ns istio"><span>istio-system</span></div>
-      <div class="ns iam"><span>iam</span></div>
-      <div class="ns demo"><span>demo</span></div>
+      <div class="ns identity"><span>identity</span></div>
+      <div class="ns spring-ns"><span>spring-api</span></div>
+      <div class="ns reports-ns"><span>reports-api</span></div>
 
       <svg class="wires" viewBox="0 0 900 330">
         <path v-for="(w, i) in wires" :key="i" :d="w.d" class="wire" :class="[w.cls, { shown: step >= w.at, live: step === w.at }]" />
@@ -56,10 +56,11 @@ const notes = [
       <div class="node browser" :class="{ shown: step >= 1, on: step === 1 }">Browser<small>a person</small></div>
       <div class="node script" :class="{ shown: step >= 1, on: step === 1 }">curl<small>a script</small></div>
       <div class="node gateway" :class="{ shown: step >= 1, on: step === 1 }">Ingress gateway<small>keycloak · app · api<br>.localhost</small></div>
-      <div class="node keycloak" :class="{ shown: step >= 2, on: step === 2 }">Keycloak<small>realm poc</small></div>
+      <div class="node keycloak" :class="{ shown: step >= 2, on: step === 2 }">Keycloak<small>realm demo</small></div>
       <div class="node postgres" :class="{ shown: step >= 2, on: step === 2 }">Postgres<small>no volume</small></div>
       <div class="node proxy" :class="{ shown: step >= 3, on: step === 3 }">OAuth2-Proxy<small>session cookie</small></div>
-      <div class="node spring" :class="{ shown: step >= 4, on: step === 4 }">Spring Boot<small>+ Envoy sidecar</small></div>
+      <div class="node spring" :class="{ shown: step >= 4, on: step === 4 }">Spring Boot<small>/api/* · Envoy sidecar</small></div>
+      <div class="node reports" :class="{ shown: step >= 4, on: step === 4 }">FastAPI<small>/reports · Envoy sidecar</small></div>
       <div class="node istiod" :class="{ shown: step >= 5, on: step === 5 }">istiod<small>control plane</small></div>
 
       <div v-for="l in labels" :key="l.t" class="label" :class="[l.cls, { shown: step >= l.at }]" :style="{ left: l.x + 'px', top: l.y + 'px' }">{{ l.t }}</div>
@@ -84,8 +85,9 @@ const notes = [
 }
 .cluster span { left: auto; right: 12px; top: -18px; }
 .istio { left: 165px; top: 26px; width: 200px; height: 292px; }
-.iam { left: 395px; top: 26px; width: 490px; height: 140px; }
-.demo { left: 395px; top: 182px; width: 490px; height: 136px; }
+.identity { left: 395px; top: 26px; width: 490px; height: 140px; }
+.spring-ns { left: 395px; top: 182px; width: 240px; height: 136px; }
+.reports-ns { left: 645px; top: 182px; width: 240px; height: 136px; }
 
 .wire { fill: none; stroke: #2459c9; stroke-width: 2; opacity: 0; transition: opacity 0.5s; }
 .wire.shown { opacity: 0.35; }
@@ -111,7 +113,8 @@ const notes = [
 .proxy { left: 415px; top: 60px; width: 140px; height: 60px; }
 .keycloak { left: 600px; top: 60px; width: 130px; height: 60px; }
 .postgres { left: 760px; top: 60px; width: 110px; height: 60px; }
-.spring { left: 590px; top: 220px; width: 200px; height: 66px; }
+.spring { left: 420px; top: 220px; width: 190px; height: 60px; }
+.reports { left: 670px; top: 220px; width: 190px; height: 60px; }
 
 .label {
   position: absolute; font: 600 0.56rem 'JetBrains Mono', monospace; color: #2459c9; white-space: nowrap;

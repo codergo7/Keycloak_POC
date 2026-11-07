@@ -60,6 +60,7 @@ echo "  • Public access"
 echo "  • JWT authentication"
 echo "  • JWT validation failure"
 echo "  • Role-based authorization"
+echo "  • Audience and client-role authorization (reports API)"
 echo "  • OAuth2-Proxy browser redirect"
 
 # ===========================================================================
@@ -211,10 +212,82 @@ else
 fi
 
 # ===========================================================================
-# 8. OAUTH2-PROXY BROWSER FLOW
+# 8. AUDIENCE — REPORTS API
 # ===========================================================================
 
-section "8. Browser authentication — OAuth2-Proxy redirect"
+section "8. Audience — reports API needs aud reports-api"
+
+echo "Scenario:"
+echo "  Bob asks for a token without scope=reports."
+echo "  The token is valid, but its aud does not contain reports-api."
+echo "  The reports sidecar's RequestAuthentication rejects it."
+echo "  Envoy answers a wrong audience with 403 (not 401)."
+echo
+
+if BOB="$(./scripts/get-token.sh bob bob)" && [[ -n "$BOB" ]]; then
+  BODY="$(curl -sS -w ' HTTP %{http_code}' \
+    -H 'Host: api.localhost' \
+    -H "Authorization: Bearer ${BOB}" \
+    "${API_URL}/reports")"
+  if [[ "$BODY" == "Audiences in Jwt are not allowed HTTP 403" ]]; then
+    pass "Bob without scope=reports rejected by the reports API → $BODY"
+  else
+    fail "Bob without scope=reports → expected 'Audiences in Jwt are not allowed HTTP 403', got '$BODY'"
+  fi
+else
+  fail "Could not obtain Bob access token"
+fi
+
+# ===========================================================================
+# 9. CLIENT ROLES — REPORTS API
+# ===========================================================================
+
+section "9. Client roles — reports-api viewer and editor"
+
+echo "Scenario:"
+echo "  Tokens are requested with scope=reports (aud reports-api)."
+echo "  Bob is in /finance, which gives the reports-api viewer role."
+echo "  Creating a report needs the editor role (/finance/managers)."
+echo "  Alice has realm roles only, so the reports API denies her."
+echo
+
+if BOB_R="$(./scripts/get-token.sh bob bob reports)" && [[ -n "$BOB_R" ]]; then
+  expect_code \
+    "Bob (viewer) can list reports" \
+    "200" \
+    -H 'Host: api.localhost' \
+    -H "Authorization: Bearer ${BOB_R}" \
+    "${API_URL}/reports"
+
+  expect_code \
+    "Bob (viewer) cannot create a report" \
+    "403" \
+    -X POST \
+    -H 'Host: api.localhost' \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer ${BOB_R}" \
+    -d '{"title":"smoke"}' \
+    "${API_URL}/reports"
+else
+  fail "Could not obtain Bob token with scope=reports"
+fi
+
+if ALICE_R="$(./scripts/get-token.sh alice alice reports)" && [[ -n "$ALICE_R" ]]; then
+  expect_code \
+    "Alice (no reports-api role) denied by the reports API" \
+    "403" \
+    -H 'Host: api.localhost' \
+    -H "Authorization: Bearer ${ALICE_R}" \
+    "${API_URL}/reports"
+else
+  fail "Could not obtain Alice token with scope=reports"
+fi
+
+# ===========================================================================
+# 10. OAUTH2-PROXY BROWSER FLOW
+# ===========================================================================
+
+section "10. Browser authentication — OAuth2-Proxy redirect"
 
 echo "Scenario:"
 echo "  Browser has no OAuth2-Proxy session."
@@ -271,6 +344,10 @@ if [[ "$FAILED" -eq 0 ]]; then
   echo "               ✓ JWT authentication"
   echo "               ✓ invalid JWT rejection"
   echo "               ✓ role authorization"
+  echo
+  echo "  API → RequestAuthentication (aud) → AuthorizationPolicy (client roles) → FastAPI"
+  echo "               ✓ audience check"
+  echo "               ✓ client-role authorization"
   echo
   exit 0
 else

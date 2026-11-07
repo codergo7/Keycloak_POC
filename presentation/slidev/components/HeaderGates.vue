@@ -78,7 +78,7 @@ const steps: Step[] = [
       { t: 'X-Auth-Request-User', fate: 'pass' },
       { t: 'X-Auth-Request-Email', fate: 'pass' },
       { t: 'aud: spring-api ✓', fate: 'add' },
-      { t: 'roles: user, developer, premium', fate: 'add' },
+      { t: 'roles: user, developer', fate: 'add' },
     ],
     note: 'The sidecar does not trust the header blindly: it verifies the token’s signature and audience, then hands its claims to the AuthorizationPolicy.',
   },
