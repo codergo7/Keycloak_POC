@@ -798,7 +798,7 @@ Every endpoint asks for a claim in the token. The Spring endpoints check realm r
 </div>
 
 <div class="mt-3 flex gap-3 mono text-sm">
-  <span v-for="c in ['make token-alice', 'make token-bob', 'make token-bob-reports', 'make smoke']" :key="c" class="cmd">$ {{ c }}</span>
+  <span v-for="c in ['make token-alice', 'make token-bob', 'make token-bob-reports', 'make demo-door2']" :key="c" class="cmd">$ {{ c }}</span>
 </div>
 
 <style>
@@ -806,7 +806,7 @@ Every endpoint asks for a claim in the token. The Spring endpoints check realm r
 </style>
 
 <!--
-Now I will prove Door 2 in the terminal, again with the expected results first. If we are short on time, I will run make smoke, which runs the automated checks.
+Now I will prove Door 2 in the terminal, again with the expected results first. I run make demo-door2, which walks through all seven checks: it explains each one, prints the exact command, runs it and shows the result. It pauses before each check, so I can talk while it waits.
 
 1. I call /api/public without a token, and I expect a 200.
 

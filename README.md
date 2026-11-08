@@ -69,6 +69,7 @@ Modern browsers resolve `*.localhost` to loopback. For CLI examples the Makefile
 
 ```bash
 make smoke
+make demo-door2        # guided Door 2 demo: explanation, command and result per check (AUTO=1: no pauses)
 ```
 
 Get a token:
