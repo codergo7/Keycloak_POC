@@ -14,7 +14,7 @@ help:
 	@echo "IAM POC targets"
 	@echo "  make up            Create Kind + Istio + Keycloak + oauth2-proxy + app"
 	@echo "  make smoke         Run API/JWT/RBAC smoke tests"
-	@echo "  make demo-api      Guided live demo of the seven API access checks (AUTO=1: no pauses)"
+	@echo "  make demo-api      Guided live demo of the eight API access checks (AUTO=1: no pauses)"
 	@echo "  make token-alice   Print Alice access token"
 	@echo "  make token-bob-reports  Print Bob access token with scope=reports (aud reports-api)"
 	@echo "  make show-claims-bob-reports  Decode it: aud has spring-api and reports-api"

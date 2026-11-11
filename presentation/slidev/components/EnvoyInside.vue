@@ -7,13 +7,23 @@
 // grows: more backends, each with its own sidecar and its own RequestAuthentication +
 // AuthorizationPolicy pair, behind the same gateway. The slide needs `clicks: 12`.
 // Token values (alg, kid, roles, aud) were taken from a real token of the running POC.
+//
+// mode="api": a script calls api.localhost/api/user with alice's token in Authorization: Bearer.
+// ext_authz is not called, the gateway's jwt_authn validates the token and its rbac requires a
+// principal, the router removes a fake X-Auth-Request-User header, and the sidecar checks the
+// audience and the role. Clicks 8–10: no token (403 at the gateway), a tampered token (401 at
+// the gateway), and /api/admin (403 at the sidecar). That slide needs `clicks: 10`.
+// Every result was checked with curl against the running POC.
 import { computed } from 'vue'
 import { useSlideContext } from '@slidev/client'
 
+const props = withDefaults(defineProps<{ mode?: 'browser' | 'api' }>(), { mode: 'browser' })
+const api = computed(() => props.mode === 'api')
+
 const { $clicks } = useSlideContext()
-const s = computed(() => Math.min(Math.max($clicks.value, 0), 12))
-const bob = computed(() => s.value === 11)
-const more = computed(() => s.value === 12)
+const s = computed(() => Math.min(Math.max($clicks.value, 0), api.value ? 10 : 12))
+const bob = computed(() => !api.value && s.value === 11)
+const more = computed(() => !api.value && s.value === 12)
 
 // click 12: the other backends, each with its own pair of resources
 const backends = [
@@ -36,12 +46,14 @@ const sidecar: Filter[] = [
 const ACTIVE = [-1, 0, 1, 2, 3, 4, 4, 4, 4, 5, 6, 5, 6]
 
 function state(i: number) {
+  if (api.value) return apiState(i)
   if (bob.value) return i < 5 ? 'done' : i === 5 ? 'fail' : 'todo'
   const a = ACTIVE[s.value]
   if (a < 0 || i > a) return 'todo'
   return i === a ? 'on' : 'done'
 }
 function verdict(i: number, f: Filter) {
+  if (api.value) return apiVerdict(i)
   if (state(i) === 'fail') return '✕ 403'
   if (i === 4 && s.value >= 5 && s.value <= 7) return 'decoding…'
   return f.ok
@@ -51,7 +63,7 @@ const user = computed(() => (bob.value ? 'bob' : 'alice'))
 const sub = computed(() => (bob.value ? 'b774…' : '44554fc9…'))
 const roles = computed(() => (bob.value ? ['user'] : ['developer', 'user']))
 
-const headers = computed(() => [
+const headers = computed(() => api.value ? apiHeaders.value : [
   { k: 'GET', v: '/api/headers', show: true },
   { k: 'Host', v: 'app.localhost', show: true },
   { k: 'Cookie', v: '_oauth2_proxy=…', show: true, gone: s.value >= 4 },
@@ -62,6 +74,7 @@ const headers = computed(() => [
 // col 2: what happens inside the filter
 const view = computed(() => {
   const v = s.value
+  if (api.value) return v === 0 ? 'intro' : 'api'
   if (v === 0) return 'intro'
   if (v === 1) return 'ext'
   if (v === 2) return 'nojwt'
@@ -75,6 +88,7 @@ const view = computed(() => {
 type Line = { t: string; hl?: boolean; mark?: '✓' | '✕' }
 const yaml = computed<{ file: string; lines: Line[] } | null>(() => {
   const v = s.value
+  if (api.value) return apiStep.value.yaml ?? null
   if (v === 1) return { file: 'ingress-authorization.yaml', lines: [
     { t: 'kind: AuthorizationPolicy' },
     { t: 'metadata: { name: oauth2-external-auth }' },
@@ -149,7 +163,7 @@ const yaml = computed<{ file: string; lines: Line[] } | null>(() => {
   return null
 })
 
-const caption = computed(() => [
+const caption = computed(() => api.value ? apiStep.value.cap : [
   'alice’s browser sends GET app.localhost/api/headers with her session cookie. Two Envoy proxies check it before Spring sees it.',
   'ext_authz: the CUSTOM policy makes Envoy pause the request and ask OAuth2-Proxy. It answers 200 and adds the identity headers.',
   'jwt_authn at the gateway: no Authorization: Bearer header, so there is nothing to validate. A missing token is not an error.',
@@ -164,6 +178,201 @@ const caption = computed(() => [
   'Same request as bob: the token is valid, but his roles are only ["user"]. No ALLOW rule matches, so the sidecar answers 403.',
   'Adding a backend: a namespace with a sidecar, one RequestAuthentication and one AuthorizationPolicy, and a route. The gateway and Keycloak stay the same.',
 ][s.value])
+
+// ---------------------------------------------------------------- mode="api"
+type Item =
+  | { c: 'call'; cls: string; t: string }
+  | { c: 'part'; cls: string; tag: string; rows: [string, string, string?, ('bad' | 'note')?][] }
+interface ApiStep {
+  a: number                       // active stage (0–5 filters, 6 the app), -1 none
+  fail?: number; failText?: string // stage that rejects the request
+  v?: Record<number, string>      // verdict overrides
+  path: string; auth: 'ok' | 'none' | 'bad'; spoof: boolean
+  col2: Item[]; p?: string; pBad?: boolean
+  yaml?: { file: string; lines: Line[] }
+  cap: string
+}
+const ISS = '…/realms/demo'
+const SUB = '…/realms/demo/170b145d…'
+const yGwRa = (bad = false): { file: string; lines: Line[] } => ({ file: 'ingress-authorization.yaml', lines: [
+  { t: 'kind: RequestAuthentication' },
+  { t: 'metadata: { name: demo-jwt-validation }' },
+  { t: 'spec:' },
+  { t: '  jwtRules:' },
+  { t: '  - issuer: http://keycloak.localhost:8080/realms/demo', hl: !bad, mark: bad ? undefined : '✓' },
+  { t: '    jwksUri: …/realms/demo/protocol/openid-connect/certs', hl: true, mark: bad ? '✕' : '✓' },
+  { t: '    forwardOriginalToken: true' },
+  { t: '    # no audiences: any token of the realm', hl: !bad },
+  { t: '    # no fromHeaders: Authorization: Bearer only' },
+] })
+const yGwAp = (ok: boolean): { file: string; lines: Line[] } => ({ file: 'ingress-authorization.yaml', lines: [
+  { t: 'kind: AuthorizationPolicy' },
+  { t: 'metadata: { name: ingress-authorization }' },
+  { t: 'spec:' },
+  { t: '  action: ALLOW' },
+  { t: '  rules:' },
+  { t: '  # JWT-authenticated API requests' },
+  { t: '  - from:' },
+  { t: '    - source: { requestPrincipals: ["*"] }', hl: true, mark: ok ? '✓' : '✕' },
+  { t: '    to:' },
+  { t: '    - operation:' },
+  { t: '        hosts: [api.localhost]', hl: ok, mark: ok ? '✓' : undefined },
+  { t: '        paths: [/api/user, /api/whoami, …]', hl: ok, mark: ok ? '✓' : undefined },
+] })
+const yScAp = (admin: boolean): { file: string; lines: Line[] } => ({ file: 'auth-app.yaml', lines: [
+  { t: 'kind: AuthorizationPolicy' },
+  { t: 'metadata: { name: spring-workload-authorization }' },
+  { t: 'spec:' },
+  { t: '  action: ALLOW' },
+  { t: '  rules:' },
+  { t: admin ? '  # Admin role' : '  # User role' },
+  { t: '  - from: [{ source: { requestPrincipals: ["*"] } }]', hl: true, mark: '✓' },
+  { t: '    to:' },
+  { t: admin ? '    - operation: { methods: [GET], paths: [/api/admin] }' : '    - operation: { methods: [GET], paths: [/api/user, …] }', hl: true, mark: '✓' },
+  { t: '    when:' },
+  { t: '    - key: request.auth.claims[realm_access][roles]', hl: true },
+  { t: admin ? '      values: ["admin"]' : '      values: ["user"]', hl: true, mark: admin ? '✕' : '✓' },
+] })
+
+const API: ApiStep[] = [
+  { a: -1, path: '/api/user', auth: 'ok', spoof: true, col2: [],
+    cap: 'A script sends GET api.localhost/api/user with alice’s token in Authorization: Bearer. It also sends a fake X-Auth-Request-User: admin header.' },
+  { a: 0, path: '/api/user', auth: 'ok', spoof: true,
+    col2: [{ c: 'call', cls: 'muted', t: 'CUSTOM rule: hosts [app.localhost] ✕ api.localhost' }],
+    p: 'The request does not match the rule, so Envoy skips ext_authz. OAuth2-Proxy is only for browsers; an API client brings its own token.',
+    yaml: { file: 'ingress-authorization.yaml', lines: [
+      { t: 'kind: AuthorizationPolicy' },
+      { t: 'metadata: { name: oauth2-external-auth }' },
+      { t: 'spec:' },
+      { t: '  action: CUSTOM' },
+      { t: '  provider: { name: oauth2-proxy }' },
+      { t: '  rules:' },
+      { t: '  - to:' },
+      { t: '    - operation:' },
+      { t: '        hosts: [app.localhost]', hl: true, mark: '✕' },
+    ] },
+    cap: 'ext_authz: the CUSTOM policy only matches app.localhost, so OAuth2-Proxy is not called.' },
+  { a: 1, path: '/api/user', auth: 'ok', spoof: true,
+    col2: [
+      { c: 'part', cls: 'h', tag: 'header', rows: [['alg · kid', 'RS256 · UHlGaDFC…'], ['JWKS key', 'UHlGaDFC…', 'signature ✓']] },
+      { c: 'part', cls: 'p', tag: 'payload', rows: [['iss', ISS, '✓'], ['exp', 'not expired', '✓'], ['aud', 'spring-api', 'not checked here', 'note']] },
+      { c: 'part', cls: 'out', tag: 'stored for rbac', rows: [['principal', SUB]] },
+    ],
+    yaml: yGwRa(),
+    cap: 'jwt_authn at the gateway: RequestAuthentication finds the Bearer token, verifies the signature with Keycloak’s JWKS, checks the issuer and the expiry, and sets the principal.' },
+  { a: 2, path: '/api/user', auth: 'ok', spoof: true,
+    col2: [{ c: 'call', cls: 'ok', t: 'principal set · rule "JWT-authenticated API requests" · ALLOW' }],
+    p: 'For api.localhost the gateway requires a valid token. It does not look at roles yet: that happens next to each API.',
+    yaml: yGwAp(true),
+    cap: 'rbac at the gateway: the ALLOW rule for api.localhost needs a principal, and the token gave one.' },
+  { a: 3, path: '/api/user', auth: 'ok', spoof: true,
+    col2: [
+      { c: 'call', cls: 'bad', t: 'X-Auth-Request-User: admin · removed' },
+      { c: 'call', cls: 'ok', t: 'Authorization kept · → spring-app:8080' },
+    ],
+    p: 'api.localhost has no ext_authz, so any X-Auth-Request header must come from the client. The VirtualService removes them before Spring could trust them.',
+    yaml: { file: 'app.yaml', lines: [
+      { t: 'kind: VirtualService' },
+      { t: 'metadata: { name: api }' },
+      { t: 'spec:' },
+      { t: '  hosts: [api.localhost]' },
+      { t: '  http:' },
+      { t: '  - route: [{ destination: { host: spring-app… } }]' },
+      { t: '    headers:' },
+      { t: '      request:' },
+      { t: '        remove:' },
+      { t: '        - x-auth-request-user', hl: true, mark: '✓' },
+      { t: '        - x-auth-request-email', hl: true },
+      { t: '        - x-auth-request-access-token, …', hl: true },
+    ] },
+    cap: 'router: the VirtualService removes the fake identity header and sends the request over mTLS to the Spring pod.' },
+  { a: 4, path: '/api/user', auth: 'ok', spoof: false,
+    col2: [
+      { c: 'part', cls: 'p', tag: 'checked again', rows: [['signature', 'JWKS key UHlGaDFC…', '✓'], ['iss', ISS, '✓'], ['aud', 'spring-api', '✓']] },
+      { c: 'part', cls: 'out', tag: 'stored for rbac', rows: [['principal', SUB], ['request.auth.claims', 'the payload']] },
+    ],
+    p: 'The audience is checked here, by the API the token was issued for.',
+    yaml: { file: 'auth-app.yaml', lines: [
+      { t: 'kind: RequestAuthentication' },
+      { t: 'metadata: { name: keycloak-jwt }' },
+      { t: 'spec:' },
+      { t: '  selector: { matchLabels: { app: spring-app } }' },
+      { t: '  jwtRules:' },
+      { t: '  - issuer: http://keycloak.localhost:8080/realms/demo', hl: true, mark: '✓' },
+      { t: '    jwksUri: …/realms/demo/protocol/openid-connect/certs', mark: '✓' },
+      { t: '    audiences: [spring-api]', hl: true, mark: '✓' },
+      { t: '    fromHeaders:' },
+      { t: '    - name: Authorization   # prefix "Bearer "', hl: true, mark: '✓' },
+      { t: '    - name: X-Auth-Request-Access-Token' },
+    ] },
+    cap: 'jwt_authn at the sidecar: keycloak-jwt reads the same token from Authorization, verifies it again, and checks the audience spring-api.' },
+  { a: 5, path: '/api/user', auth: 'ok', spoof: false,
+    col2: [{ c: 'part', cls: 'out', tag: 'from jwt_authn', rows: [['principal', SUB, '✓'], ['claims.realm_access.roles', '["developer", "user"]', 'user ✓']] }],
+    yaml: yScAp(false),
+    cap: 'rbac at the sidecar: the rule for /api/user needs the realm role user, and alice has it.' },
+  { a: 6, path: '/api/user', auth: 'ok', spoof: false,
+    col2: [{ c: 'call', cls: 'ok', t: '← 200 OK from Spring' }],
+    p: 'Spring never saw the fake header, and it did not verify the token itself: two Envoy proxies did that.',
+    cap: 'Spring receives the request and answers 200.' },
+  { a: 2, fail: 2, failText: '✕ 403', v: { 1: 'no token' }, path: '/api/user', auth: 'none', spoof: false,
+    col2: [
+      { c: 'call', cls: 'muted', t: 'Authorization: (none) · no principal' },
+      { c: 'call', cls: 'bad', t: '← 403 RBAC: access denied' },
+    ],
+    p: 'A missing token is not a bad token, so RequestAuthentication lets the request pass. But without a principal, no ALLOW rule for /api/user matches.',
+    yaml: yGwAp(false),
+    cap: 'No token: jwt_authn has nothing to check, so there is no principal. The gateway’s ALLOW policy answers 403.' },
+  { a: 1, fail: 1, failText: '✕ 401', path: '/api/user', auth: 'bad', spoof: false,
+    col2: [
+      { c: 'call', cls: 'bad', t: 'signature does not match the JWKS key' },
+      { c: 'call', cls: 'bad', t: '← 401 Jwt verification fails' },
+    ],
+    p: 'One changed character breaks the signature. The request stops at the first jwt_authn filter, and no AuthorizationPolicy is reached.',
+    yaml: yGwRa(true),
+    cap: 'Tampered token: the signature check fails, so the gateway answers 401.' },
+  { a: 5, fail: 5, failText: '✕ 403', path: '/api/admin', auth: 'ok', spoof: false,
+    col2: [{ c: 'part', cls: 'out', tag: 'from jwt_authn', rows: [['principal', SUB, '✓'], ['claims.realm_access.roles', '["developer", "user"]', 'no admin ✕', 'bad']] }],
+    p: '403 from the sidecar: the gateway let the request in, because the role is checked next to the API.', pBad: true,
+    yaml: yScAp(true),
+    cap: 'alice calls /api/admin: the token is valid and passes the gateway, but she has no admin role. The sidecar answers 403.' },
+]
+const apiStep = computed(() => API[s.value])
+const apiFail = computed(() => api.value && apiStep.value.fail !== undefined)
+const API_OK = ['not called', 'valid ✓', 'ALLOW ✓', '− x-auth-*', 'aud ✓', 'ALLOW ✓']
+
+function apiState(i: number) {
+  const st = apiStep.value
+  const passed = i === 0 ? 'skip' : 'done'
+  if (st.fail !== undefined) return i < st.fail ? passed : i === st.fail ? 'fail' : 'todo'
+  if (st.a < 0 || i > st.a) return 'todo'
+  return i === st.a ? 'on' : passed
+}
+function apiVerdict(i: number) {
+  const st = apiStep.value
+  if (apiState(i) === 'fail') return st.failText
+  return st.v?.[i] ?? API_OK[i]
+}
+const apiHeaders = computed(() => {
+  const st = apiStep.value
+  const h: { k: string; v: string; show: boolean; gone?: boolean; fresh?: boolean; hl?: boolean; fake?: boolean; tag?: string }[] = [
+    { k: 'GET', v: st.path, show: true },
+    { k: 'Host', v: 'api.localhost', show: true },
+  ]
+  if (st.auth === 'ok') h.push({ k: 'Authorization', v: 'Bearer eyJhbGciOiJSUzI1NiIs…', show: true, hl: s.value === 2 || s.value === 5 })
+  if (st.auth === 'bad') h.push({ k: 'Authorization', v: 'Bearer eyJhbGci…FH-WYO48kC3A5ctsX', show: true, fake: true })
+  if (st.spoof || (s.value >= 4 && s.value <= 7)) h.push({ k: 'X-Auth-Request-User', v: 'admin', show: true, fake: true, gone: s.value >= 4,
+    tag: s.value >= 4 ? 'removed by the router' : 'fake · sent by the client, not by OAuth2-Proxy' })
+  return h
+})
+
+// shared by both modes
+const sidecarReached = computed(() => {
+  if (!api.value) return s.value >= 5
+  const st = apiStep.value
+  return st.fail !== undefined ? st.fail >= 4 : st.a >= 4
+})
+const appOn = computed(() => (api.value ? s.value === 7 : s.value === 10))
+const appOff = computed(() => (api.value ? apiFail.value : bob.value))
 </script>
 
 <template>
@@ -171,7 +380,7 @@ const caption = computed(() => [
     <!-- the pipeline -->
     <div class="pipe">
       <div class="end" :class="{ on: s === 0 }">
-        <div class="end-name">Browser</div><small>{{ user }}</small>
+        <div class="end-name">{{ api ? 'Script' : 'Browser' }}</div><small>{{ api ? 'curl · alice' : user }}</small>
       </div>
       <div class="link" :class="{ lit: s >= 1 }"><span /></div>
 
@@ -185,7 +394,7 @@ const caption = computed(() => [
             <div class="verdict">{{ verdict(i, f) }}</div>
           </div>
         </div>
-        <div class="ext" :class="{ on: s === 1, done: s > 1 }">
+        <div class="ext" :class="api ? 'off' : { on: s === 1, done: s > 1 }">
           <span class="ext-arrow">⇅</span> OAuth2-Proxy <small>external authorizer</small>
         </div>
         <Transition name="grow">
@@ -203,7 +412,7 @@ const caption = computed(() => [
 
       <div class="right">
       <div class="row">
-      <div class="link" :class="{ lit: s >= 5 }"><span /><em>mTLS</em></div>
+      <div class="link" :class="{ lit: sidecarReached }"><span /><em>mTLS</em></div>
 
       <div class="proxy sc">
         <div class="proxy-label">Sidecar <span>· Envoy · spring-api</span></div>
@@ -215,14 +424,14 @@ const caption = computed(() => [
             <div class="verdict">{{ verdict(i + 4, f) }}</div>
           </div>
         </div>
-        <div class="ext" :class="{ on: s === 6, done: s > 6 }">
+        <div class="ext" :class="api ? { on: s === 5, done: sidecarReached && s > 5 } : { on: s === 6, done: s > 6 }">
           <span class="ext-arrow">⤓</span> JWKS <small>public keys, via istiod</small>
         </div>
       </div>
 
-      <div class="link" :class="{ lit: s === 10 }"><span /></div>
-      <div class="end app" :class="{ on: s === 10, off: bob }">
-        <div class="end-name">Spring</div><small>{{ s === 10 ? '200 OK' : bob ? 'not reached' : ':8080' }}</small>
+      <div class="link" :class="{ lit: appOn }"><span /></div>
+      <div class="end app" :class="{ on: appOn, off: appOff }">
+        <div class="end-name">Spring</div><small>{{ appOn ? '200 OK' : appOff ? 'not reached' : ':8080' }}</small>
       </div>
       </div>
 
@@ -266,8 +475,9 @@ const caption = computed(() => [
         <div class="req">
           <TransitionGroup name="hdr">
             <div v-for="h in headers.filter(h => h.show)" :key="h.k" class="hdr"
-              :class="{ gone: h.gone, fresh: h.fresh, hl: h.hl }">
+              :class="{ gone: h.gone, fresh: h.fresh, hl: h.hl, fake: h.fake }">
               <span class="k">{{ h.k }}:</span> <span class="v">{{ h.v }}</span>
+              <em v-if="h.tag" class="htag">{{ h.tag }}</em>
             </div>
           </TransitionGroup>
         </div>
@@ -278,7 +488,8 @@ const caption = computed(() => [
         <div class="col-title">Inside the filter</div>
         <Transition name="view" mode="out-in">
           <div v-if="view === 'intro'" key="intro" class="hint">
-            Each Istio resource becomes an Envoy filter. Click to follow the request through every filter.
+            <template v-if="api">No browser, no cookie: the script brings its own token. Click to follow it through the same filters.</template>
+            <template v-else>Each Istio resource becomes an Envoy filter. Click to follow the request through every filter.</template>
           </div>
 
           <div v-else-if="view === 'ext'" key="ext" class="box">
@@ -324,6 +535,17 @@ const caption = computed(() => [
             </div>
           </div>
 
+          <div v-else-if="view === 'api'" :key="'api' + s" class="box decode">
+            <template v-for="(it, k) in apiStep.col2" :key="k">
+              <div v-if="it.c === 'call'" class="call" :class="it.cls">{{ it.t }}</div>
+              <div v-else class="part" :class="it.cls">
+                <span class="tag">{{ it.tag }}</span>
+                <div v-for="r in it.rows" :key="r[0]" class="claim"><span>{{ r[0] }}</span> {{ r[1] }} <b v-if="r[2]" :class="r[3] || 'okc'">{{ r[2] }}</b></div>
+              </div>
+            </template>
+            <p v-if="apiStep.p" :class="{ badp: apiStep.pBad }">{{ apiStep.p }}</p>
+          </div>
+
           <div v-else key="claims" class="box decode">
             <div class="part out">
               <span class="tag">from jwt_authn</span>
@@ -351,7 +573,7 @@ const caption = computed(() => [
               <span>{{ l.t }}</span><b v-if="l.mark" :class="l.mark === '✕' ? 'bad' : 'okc'">{{ l.mark }}</b>
             </div>
           </div>
-          <div v-else-if="s === 10" key="app" class="hint">
+          <div v-else-if="appOn" key="app" class="hint">
             No Istio resource here: the request has passed every filter. <b>200 OK.</b>
           </div>
           <div v-else key="none" class="hint">The resource that configures the active filter appears here.</div>
@@ -360,7 +582,7 @@ const caption = computed(() => [
     </div>
 
     <Transition name="cap" mode="out-in">
-      <div :key="s" class="caption" :class="{ bad: bob }"><b>{{ s }}</b> {{ caption }}</div>
+      <div :key="s" class="caption" :class="{ bad: bob || apiFail }"><b>{{ s }}</b> {{ caption }}</div>
     </Transition>
   </div>
 </template>
@@ -514,6 +736,18 @@ const caption = computed(() => [
 .view-leave-to { opacity: 0; }
 .cap-enter-active, .cap-leave-active { transition: opacity 0.2s; }
 .cap-enter-from, .cap-leave-to { opacity: 0; }
+
+/* mode="api" */
+.pill.skip { opacity: 0.45; background: transparent; border: 1px dashed #b8c3d8; }
+.pill.skip .verdict { opacity: 1; transform: scale(1); color: var(--muted); }
+.ext.off { opacity: 0.35; text-decoration: line-through; }
+.hdr.fake .v { color: var(--red); font-weight: 700; }
+.htag { display: block; font: italic 500 0.48rem 'Inter', sans-serif; color: var(--red); white-space: normal; }
+.hdr.gone .htag { color: var(--muted); }
+.hdr:has(.htag)::after { top: 0.55rem; }
+.claim b.bad { color: var(--red); }
+.claim b.note { color: var(--muted); font-weight: 500; }
+.call.bad { background: #fbe4e1; color: var(--red); font-weight: 700; }
 
 /* click 12: more backends */
 .right { flex: 1.65; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; }

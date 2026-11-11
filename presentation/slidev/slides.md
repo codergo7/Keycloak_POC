@@ -627,41 +627,41 @@ To sum up: the browser only holds an encrypted cookie, Spring gets the identity 
 -->
 
 ---
+clicks: 10
+---
 
-<div class="kicker">API access · two Istio resources, always together</div>
+<div class="kicker">API access · a script with a user token · api.localhost</div>
 
-# Validate the JWT, then authorize the request
+# Inside Envoy: the same filters, the API path
 
-<div class="grid grid-cols-2 gap-4 mt-3">
-  <div class="card" v-motion :initial="{ opacity: 0, y: 20 }" :enter="{ opacity: 1, y: 0 }"><h3>RequestAuthentication</h3><p>“Is this token real?” Rejects bad tokens. <b>Lets no-token requests pass.</b></p></div>
-  <div class="card" v-motion :initial="{ opacity: 0, y: 20 }" :enter="{ opacity: 1, y: 0, transition: { delay: 200 } }"><h3>AuthorizationPolicy</h3><p>“Is this caller allowed here?” requestPrincipals, roles, paths.</p></div>
-</div>
-
-<div class="tbl-card mt-4">
-<table class="tbl">
-  <thead><tr><th>Request to api.localhost</th><th>RequestAuthn</th><th>AuthorizationPolicy</th><th>Result</th></tr></thead>
-  <tbody>
-    <tr v-click><td class="strong">No token</td><td>Nothing to check</td><td>No principal: deny</td><td class="code-403">403</td></tr>
-    <tr v-click><td class="strong">Forged or expired token</td><td>Rejected</td><td class="faint">Not reached</td><td class="code-401">401</td></tr>
-    <tr v-click><td class="strong">alice → /api/user</td><td>Valid</td><td>Role user: allow</td><td class="code-200">200</td></tr>
-    <tr v-click><td class="strong">alice → /api/admin</td><td>Valid</td><td>No admin role: deny</td><td class="code-403">403</td></tr>
-  </tbody>
-</table>
-</div>
+<EnvoyInside mode="api" />
 
 <!--
-Now let's move to API access, where scripts call api.localhost with a bearer token. Here two Istio resources must work as a pair.
+Now the same view for API access. A script, in our demo plain curl, calls api.localhost with alice's access token in the Authorization header. There is no browser and no cookie. The script also sends its own X-Auth-Request-User header that claims to be admin. On the browser path OAuth2-Proxy sets that header, but here nobody does, so this one is fake: the script is trying to fool the application.
 
-RequestAuthentication asks whether the token is real. It rejects bad tokens, but it lets a request with no token pass.
+[click] 1. The first filter is ext_authz again. But the CUSTOM policy only matches app.localhost, so Envoy skips it and OAuth2-Proxy is not called. OAuth2-Proxy is for browsers; an API client brings its own token.
 
-AuthorizationPolicy asks whether this caller is allowed to make this request.
+[click] 2. Now jwt_authn at the gateway has real work to do. The RequestAuthentication demo-jwt-validation finds the bearer token, takes the key with the same key ID from Keycloak's JWKS, and verifies the signature. It checks the issuer and the expiry, but not the audience. The result is the principal: the issuer and the subject of the token.
 
-[click] With no token, the policy finds no authenticated user, so the answer is 403.
-[click] With a forged or expired token, RequestAuthentication answers 401, and the policy is never reached.
-[click] When alice calls /api/user, her token is valid and she has the user role, so the answer is 200.
-[click] When alice calls /api/admin, her token is valid but she has no admin role, so the answer is 403.
+[click] 3. rbac at the gateway. For api.localhost, the ALLOW rule needs a principal, which means any valid token. It does not look at roles yet. So the gateway answers the question: is there a valid token from our Keycloak?
 
-That is why you must always use the two resources together.
+[click] 4. The router. api.localhost has no ext_authz, so an X-Auth-Request header can only come from the client. The VirtualService removes all of them, so our fake admin header is gone before it reaches Spring. The Authorization header stays. We will try exactly this in check 5 of the demo.
+
+[click] 5. In the Spring sidecar, the RequestAuthentication keycloak-jwt reads the same token from the Authorization header and verifies it again. This time it also checks the audience: the token must be issued for spring-api. Then it stores the claims for the next filter.
+
+[click] 6. rbac at the sidecar. The rule for /api/user needs the realm role user, and alice has it.
+
+[click] 7. Spring receives the request and answers 200. It did not verify the token, and it never saw the fake header.
+
+Now three requests that fail, each at a different filter.
+
+[click] 8. No token at all. RequestAuthentication lets the request pass, because a missing token is not a bad token. But there is no principal, so the gateway's ALLOW rule does not match: 403 at the gateway. This is why RequestAuthentication and AuthorizationPolicy always come as a pair.
+
+[click] 9. A tampered token: I change one character. The signature no longer matches, so the gateway's jwt_authn answers 401, and no AuthorizationPolicy is reached.
+
+[click] 10. alice calls /api/admin. Her token is valid, so the gateway lets the request in. The role check happens next to the API: alice has no admin role, so the Spring sidecar answers 403.
+
+So the gateway asks whether there is a valid token, and the sidecar asks whether this token is meant for this API and has the right role. We will see all of this live in the demo.
 -->
 
 ---
@@ -703,7 +703,7 @@ Every endpoint asks for a claim in the token. The Spring endpoints check realm r
 
 <div class="kicker">Live demo · API access · api.localhost</div>
 
-# Demo: API access, seven checks with curl
+# Demo: API access, eight checks with curl
 
 <div class="tbl-card mt-2">
 <table class="tbl">
@@ -713,9 +713,10 @@ Every endpoint asks for a claim in the token. The Spring endpoints check realm r
     <tr><td class="faint">2</td><td>curl /api/user, no token</td><td class="code-403">403 access denied</td></tr>
     <tr><td class="faint">3</td><td>curl /api/user, tampered token</td><td class="code-401">401 JWT fails</td></tr>
     <tr><td class="faint">4</td><td>alice token → /api/user, then /api/admin</td><td><span class="code-200">200</span>, then <span class="code-403">403</span></td></tr>
-    <tr><td class="faint">5</td><td>bob token without scope=reports → GET /reports</td><td class="code-403">403 wrong audience</td></tr>
-    <tr><td class="faint">6</td><td>bob token with scope=reports → GET, then POST /reports</td><td><span class="code-200">200</span>, then <span class="code-403">403</span></td></tr>
-    <tr><td class="faint">7</td><td>Add bob to <code>/finance/managers</code> in Keycloak → POST /reports</td><td><span class="code-403">403</span>, then <span class="code-200">201</span></td></tr>
+    <tr><td class="faint">5</td><td>alice token + fake <code>X-Auth-Request-User: admin</code> → /api/headers</td><td><span class="code-200">200</span>, header removed</td></tr>
+    <tr><td class="faint">6</td><td>bob token without scope=reports → GET /reports</td><td class="code-403">403 wrong audience</td></tr>
+    <tr><td class="faint">7</td><td>bob token with scope=reports → GET, then POST /reports</td><td><span class="code-200">200</span>, then <span class="code-403">403</span></td></tr>
+    <tr><td class="faint">8</td><td>Add bob to <code>/finance/managers</code> in Keycloak → POST /reports</td><td><span class="code-403">403</span>, then <span class="code-200">201</span></td></tr>
   </tbody>
 </table>
 </div>
@@ -777,7 +778,17 @@ Next /api/admin, which needs the role admin. Her token is valid, but she does no
 
 The token is fine, but the claim is missing. A 403 means: I know who you are, and the answer is no.
 
-**5 · bob without the reports scope**
+**5 · A fake identity header**
+
+*On screen: the VirtualService api, with the list of X-Auth-Request headers it removes.*
+
+In the browser demo, Spring got alice's identity from X-Auth-Request headers that OAuth2-Proxy added. What if a script simply sends such a header itself? alice now sends X-Auth-Request-User: admin to /api/headers, which lists every header that Spring receives. On api.localhost there is no ext_authz, so this header can only come from the client, and the VirtualService removes it. I expect a 200, and no X-Auth-Request header at Spring.
+
+*Enter. Result: 200, and "X-Auth-Request headers that Spring received: none".*
+
+Spring can trust these headers because only OAuth2-Proxy can set them: anything a client sends is removed at the gateway. This is click 4 of the Inside Envoy slide for API access, live.
+
+**6 · bob without the reports scope**
 
 *On screen: bob's claims, with aud only spring-api, and the reports RequestAuthentication with audiences reports-api.*
 
@@ -787,7 +798,7 @@ bob is in the finance group, so he has the viewer role of the reports API. But t
 
 The token is correctly signed and bob has the right role, but the token was not issued for this API. The audience check stops a token for one API from being used against another.
 
-**6 · bob with the reports scope**
+**7 · bob with the reports scope**
 
 *On screen: the new token, with reports-api in aud and viewer in the reports-api roles, and the reports ALLOW rules.*
 
@@ -801,7 +812,7 @@ Creating a report needs the editor role, and bob is only a viewer. I expect a 40
 
 The reports API is written in Python with FastAPI, and it has no security code at all. The same Istio resources protect the Java app and the Python app.
 
-**7 · Add bob to the managers group**
+**8 · Add bob to the managers group**
 
 *On screen: the admin console path, and the admin API call.*
 
@@ -817,7 +828,7 @@ Nothing changed in the code, in the policy, or in the deployment. Only a group m
 
 *Enter for the summary.*
 
-The script removes bob from the group again, so the demo can be repeated, and all nine checks behaved as expected.
+The script removes bob from the group again, so the demo can be repeated, and all ten checks behaved as expected.
 -->
 
 ---

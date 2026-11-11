@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Live demo of API access (api.localhost): the seven checks from the "Demo: API access"
+# Live demo of API access (api.localhost): the eight checks from the "Demo: API access"
 # slide, one at a time, with the command, the result and what it proves.
 #
 #   make demo-api            press Enter to run each request and to show the next check
 #   make demo-api AUTO=1     run straight through
 #
-# Step 7 adds bob to /finance/managers through the Keycloak admin API and
+# Step 8 adds bob to /finance/managers through the Keycloak admin API and
 # removes him again at the end, so the demo can be repeated.
 set -uo pipefail
 
@@ -92,7 +92,7 @@ PY
 snippet() {
   echo "  ${DIM}┌ $1 · $2${R}"
   while IFS= read -r line; do
-    if [[ "$line" =~ requestPrincipals|audiences|request\.auth\.claims|values:|issuer:|jwksUri:|-\ (spring|reports)-api$ ]]; then
+    if [[ "$line" =~ requestPrincipals|audiences|request\.auth\.claims|values:|issuer:|jwksUri:|-\ (spring|reports)-api$|x-auth-request-user$ ]]; then
       echo "  ${DIM}│${R} ${MAGENTA}${B}${line}${R}"
     else
       echo "  ${DIM}│${R} ${BLUE}${line}${R}"
@@ -131,7 +131,7 @@ preflight() {
   fi
 }
 
-echo "${B}API access · api.localhost · seven checks with curl${R}"
+echo "${B}API access · api.localhost · eight checks with curl${R}"
 echo "${DIM}Expected result first, then the real answer from the cluster.${R}"
 preflight
 
@@ -232,8 +232,44 @@ run -H "Authorization: Bearer $ALICE" "$API/api/admin"
 expect 403 "valid token, but no admin role" "RBAC: access denied"
 
 # ---------------------------------------------------------------------------
+step "5. A fake identity header" \
+  "Browser requests get ${B}X-Auth-Request-User${R} from OAuth2-Proxy. On api.localhost there is ${B}no ext_authz${R}," \
+  "so such a header can only come from the client. alice sends ${B}X-Auth-Request-User: admin${R}" \
+  "to /api/headers, which lists every header that Spring receives."
+snippet k8s/app/app.yaml "VirtualService api (route to Spring)" <<'YAML'
+hosts: [api.localhost]
+http:
+  - route:
+      - destination: { host: spring-app.spring-api.svc.cluster.local }
+    headers:
+      request:
+        remove:
+          - x-auth-request-user
+          - x-auth-request-email
+          - x-auth-request-groups
+          - x-auth-request-preferred-username
+          - x-auth-request-access-token
+YAML
+show_cmd "curl -H \"Authorization: Bearer \$ALICE\" -H 'X-Auth-Request-User: admin' $API/api/headers"
+pause
+run -H "Authorization: Bearer $ALICE" -H 'X-Auth-Request-User: admin' "$API/api/headers"
+SEEN="$(printf '%s' "$BODY" | python3 -c 'import json,sys
+try: h = json.load(sys.stdin)
+except Exception: print("unreadable response"); sys.exit()
+h = h.get("headers", h) if isinstance(h, dict) else {}
+print(", ".join(f"{k}: {v}" for k, v in h.items() if k.lower().startswith("x-auth-request")) or "none")')"
+echo "  → HTTP $(color_code "$CODE")  X-Auth-Request headers that Spring received: ${B}${SEEN:-none}${R}"
+if [[ "$CODE" == 200 && "${SEEN:-none}" == none ]]; then
+  echo "  ${GREEN}✔ expected 200, without the fake header${R}  the gateway removed it before Spring could trust it"
+  PASSED=$((PASSED + 1))
+else
+  echo "  ${RED}✘ expected 200 without X-Auth-Request headers, got $CODE ($SEEN)${R}"
+  FAILED=$((FAILED + 1))
+fi
+
+# ---------------------------------------------------------------------------
 BOB="$(token bob)" || exit 1
-step "5. bob without scope=reports" \
+step "6. bob without scope=reports" \
   "bob has the reports viewer role, but this token was ${B}not issued for the reports API${R}:" \
   "aud contains only spring-api."
 claims "$BOB"
@@ -254,7 +290,7 @@ expect 403 "wrong audience → ${B}Audiences in Jwt are not allowed${R}" "Audien
 
 # ---------------------------------------------------------------------------
 BOB_R="$(token bob reports)" || exit 1
-step "6. bob with scope=reports" \
+step "7. bob with scope=reports" \
   "Same user, new token, asked for ${B}scope=reports${R}: aud now includes reports-api."
 principal "$BOB_R"
 claims "$BOB_R"
@@ -294,7 +330,7 @@ run -X POST -H "Authorization: Bearer $BOB_R" -H 'Content-Type: application/json
 expect 403 "creating needs ${B}editor${R}, bob is only a viewer" "RBAC: access denied"
 
 # ---------------------------------------------------------------------------
-step "7. Add bob to /finance/managers" \
+step "8. Add bob to /finance/managers" \
   "In the admin console: ${B}Users → bob → Groups → Join group → finance/managers${R}." \
   "The script does the same through the Keycloak admin API, then asks for a new token."
 ADMIN_AT="$(curl -sS -d client_id=admin-cli -d username=admin -d password=admin -d grant_type=password \
