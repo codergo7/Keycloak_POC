@@ -17,21 +17,22 @@ Press `→` / space to step through clicks; `o` shows the slide overview.
 |---|---|---|
 | `components/ArchDiagram.vue` | 4 | The POC architecture: kind cluster, the istio-system, identity, spring-api and reports-api namespaces, and the links between them (ingress, ext_authz, back channel, routes, istiod config and JWKS) |
 | `components/ComponentsFlow.vue` | 5 | The four components, one per click, with what each hands to the next (signed tokens, identity headers + token, a checked request); click 5 shows the one-line summary |
+| `components/BackupIndex.vue` | 23 (backup) | Index of the backup slides by topic; each entry links to its slide by `routeAlias` and shows its current number |
 | `components/SeqFlow.vue` | 11, 12 | Authorization code flow: draws all 13 messages (`mode="overview"`), or one per click with a moving packet and the HTTP detail (`mode="steps"`). Steps 4 and 5 show the real Keycloak login page (`public/keycloak-login.png`) being filled in |
-| `components/FilterChain.vue` | 24 (backup) | The real Envoy filter order at the ingress gateway and the Spring sidecar |
+| `components/FilterChain.vue` | 25 (backup) | The real Envoy filter order at the ingress gateway and the Spring sidecar |
 | `components/EnvoyInside.vue` | 16, 18 | One browser request through the ingress gateway and the Spring sidecar, filter by filter: ext_authz (AuthorizationPolicy CUSTOM), jwt_authn (RequestAuthentication) decoding the token and storing `request.auth.claims`, rbac (AuthorizationPolicy ALLOW) reading them, the router (VirtualService); then the same request as bob, denied with 403; the last click adds more backends (reports-api, a new x-api, …), each with its own sidecar and RequestAuthentication + AuthorizationPolicy pair behind the same gateway. With `mode="api"` (slide 18, 10 clicks) it follows a script's request to api.localhost/api/user with a Bearer token: ext_authz not called, the gateway validates the token and requires a principal, the router removes a fake `X-Auth-Request-User`, the sidecar checks the audience and the role; then no token (403 at the gateway), a tampered token (401 at the gateway) and /api/admin (403 at the sidecar) |
-| `components/RequestLanes.vue` | 25 (backup) | Six requests race through the same checkpoints until the one that stops them |
-| `components/CookieJourney.vue` | 30 (backup) | The session cookie goes to oauth2-proxy and is stripped before Spring |
-| `components/HeaderGates.vue` | 27 (backup) | Every sensitive header, hop by hop, against the rule that lets it through or stops it (ext_authz header lists, VirtualService header rules, RequestAuthentication `fromHeaders`) |
-| `components/LifetimeBars.vue` | 28 (backup) | Lifetimes of the ID, access and refresh tokens, the Keycloak SSO session and the cookies, on a log time axis |
+| `components/RequestLanes.vue` | 26 (backup) | Six requests race through the same checkpoints until the one that stops them |
+| `components/CookieJourney.vue` | 31 (backup) | The session cookie goes to oauth2-proxy and is stripped before Spring |
+| `components/HeaderGates.vue` | 28 (backup) | Every sensitive header, hop by hop, against the rule that lets it through or stops it (ext_authz header lists, VirtualService header rules, RequestAuthentication `fromHeaders`) |
+| `components/LifetimeBars.vue` | 29 (backup) | Lifetimes of the ID, access and refresh tokens, the Keycloak SSO session and the cookies, on a log time axis |
 | `components/RefreshLoop.vue` | 14 | The token refresh after `--cookie-refresh=4m`, then the same request after the session idled out |
-| `components/SessionTimeline.vue` | 29 (backup) | A working day on a 0–12 h axis: the 10 h hard stop, and a lunch break that hits the 30 min idle timeout |
+| `components/SessionTimeline.vue` | 30 (backup) | A working day on a 0–12 h axis: the 10 h hard stop, and a lunch break that hits the 30 min idle timeout |
 | `components/AudFlow.vue` | not in the deck | How client scopes and audience mappers fill `aud`, and how each sidecar checks it |
 | `components/QaFlow.vue` | not in the deck | Generic sequence diagram for Q&A slides; the steps live in `flows/qa-flows.ts` (`logout`, `spoof`) |
 
 A slide that uses one of these declares its click count in its frontmatter (`clicks: 13` and so on).
 
-Running order: theory (1–13), the token refresh after the login (14), the two access paths (15), inside Envoy for browser access (16), a live demo of browser access (17), inside Envoy for API access (18), a live demo of API access (19), wrap-up (20–21), then backup slides (22–32): claims per endpoint (23), the Envoy filter order (24), six requests (25), the browser access policy (26), every sensitive header (27), token and session lifetimes (28–29), the cookie's trip (30), audience and scopes Q&A (31), and lessons from building the POC (32).
+Running order: theory (1–13), the token refresh after the login (14), the two access paths (15), inside Envoy for browser access (16), a live demo of browser access (17), inside Envoy for API access (18), a live demo of API access (19), wrap-up (20–21), then backup slides (22–33): an index with links (23), claims per endpoint (24), the Envoy filter order (25), six requests (26), the browser access policy (27), every sensitive header (28), token and session lifetimes (29–30), the cookie's trip (31), audience and scopes Q&A (32), and lessons from building the POC (33).
 
 Every slide has speaker notes written to be read aloud (the HTML comment at the end of the slide), in full sentences per click. The talk opens and closes with one message: security out of the application. The main slides (1–21) are planned for a 30-minute slot including both demos (estimate, not rehearsed; the claims table moved to backup to make room). `[click]` markers in the notes highlight the current sentence in the presenter view.
 

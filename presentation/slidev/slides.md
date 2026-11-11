@@ -397,7 +397,7 @@ This is the real login flow, which takes 13 messages between 5 actors.
 
 The colors show who can see each message. Blue messages go through the browser, orange messages go directly from server to server, and grey messages stay inside the cluster.
 
-Notice that the tokens only travel on the orange lines, so the browser never receives them. Let's go through it step by step.
+Notice that the tokens are only sent in readable form on the orange lines. The browser only gets them encrypted, inside the cookie. Let's go through it step by step.
 -->
 
 ---
@@ -450,7 +450,7 @@ clicks: 13
     <p>Redirects (302) and the login page<br>A one-time code and a state value<br>An encrypted session cookie</p>
   </div>
   <div class="card !p-5" v-motion :initial="{ opacity: 0, x: 30 }" :enter="{ opacity: 1, x: 0, transition: { delay: 200 } }">
-    <div class="flex items-center gap-2 mb-2"><span class="icon-dot orange"><span class="i-carbon-view-off" /></span><h3 class="!m-0">Back channel · never seen</h3></div>
+    <div class="flex items-center gap-2 mb-2"><span class="icon-dot orange"><span class="i-carbon-view-off" /></span><h3 class="!m-0">Back channel · never readable by the browser</h3></div>
     <p>Access, ID and refresh tokens<br>The client secret<br>Any call between pods</p>
   </div>
 </div>
@@ -462,7 +462,7 @@ clicks: 13
 </div>
 
 <!--
-Let's summarize what the browser saw. It saw the redirects, the login page, a one-time code and an encrypted cookie. It never saw the tokens, the client secret, or any call between the pods.
+Let's summarize what the browser saw. It saw the redirects, the login page, a one-time code and an encrypted cookie. It never saw the client secret or any call between the pods, and it only holds the tokens encrypted, inside the cookie.
 
 [click] Keycloak checked the password and issued the tokens.
 [click] OAuth2-Proxy exchanged the code for the tokens and now keeps the session.
@@ -584,12 +584,12 @@ Istio doesn't run our rules itself. Each Istio resource becomes a filter in Envo
   <tbody>
     <tr><td class="faint">1</td><td>Open app.localhost/api/whoami in a private window</td><td class="code-30x">302 to the Keycloak login page</td></tr>
     <tr><td class="faint">2</td><td>Log in as alice, then open /api/headers</td><td>Spring shows her user ID and email from the identity headers, and gets no cookie</td></tr>
-    <tr><td class="faint">3</td><td>Open app.localhost/oauth2/auth</td><td><span class="code-200">202</span>, identity headers stripped by the route</td></tr>
+    <tr><td class="faint">3</td><td>Still as alice, open /api/admin</td><td><span class="code-403">403</span> RBAC: access denied, from Spring’s sidecar</td></tr>
   </tbody>
 </table>
 </div>
 
-<p class="remember">Spring knows <b>who</b> alice is, but never sees her session, and nothing sensitive comes back to the browser.</p>
+<p class="remember">Spring knows <b>who</b> alice is and never sees her session. Her roles decide what she may open, before Spring sees the request.</p>
 
 <!--
 Now let's see browser access live. I'll use a private window, so there are no old cookies. For each step, I'll say what I expect first.
@@ -618,17 +618,17 @@ Now Spring answers, with alice's user ID and email. Spring didn't read a token o
 
 This page lists every header Spring received. There's no cookie: the gateway removed it. But the access token is there, and Spring's sidecar already checked it, including her developer role. So Spring knows who alice is, but never sees her session.
 
-**3 · Nothing sensitive goes back to the browser**
+**3 · Logged in, but not allowed**
 
-*Do: open the developer tools on the Network tab, go to app.localhost:8080/oauth2/auth, and click the request.*
+*Do: in the same window, open app.localhost:8080/api/admin.*
 
-This is OAuth2-Proxy's own check endpoint. Without our route rule, it would send the identity headers and the access token back to the browser.
+alice is logged in, but /api/admin needs the admin role, and she doesn't have it. So I expect a 403.
 
-*Result: 202, and no X-Auth-Request headers in the response.*
+*Result: 403, RBAC: access denied.*
 
-Our route removes them. If someone asks about GAP-Auth: that's only alice's user ID, not a secret.
+Her session is valid, so the gateway let the request through. Then Spring's sidecar checked the roles in her token, found no admin, and stopped the request. Spring never saw it. Being logged in tells us who you are; the roles decide what you may open.
 
-So: the browser holds only an encrypted cookie, Spring gets the identity in headers, and the tokens stay inside the cluster.
+So: alice logs in once at Keycloak, Spring gets her identity in headers without seeing her session, and her roles decide what she may open.
 -->
 
 ---
@@ -885,9 +885,25 @@ class: navy
 </div>
 
 <!--
-These are backup slides. I only show them if someone asks about one of these topics: the exact order of checks inside Envoy, where six different requests stop, the browser access policy, the sensitive headers, how long a login lasts, where the session cookie goes, how audiences and scopes work, the issues we found while building the POC, what logout ends, what happens when Keycloak is down, whether headers can be faked, how to debug a 401 or 403, or whether authorization belongs in the mesh or the app.
+These are the backup slides. I only show them if someone asks. The next slide is an index: I click a topic to jump to it.
 -->
 
+---
+routeAlias: backup-index
+---
+
+<div class="kicker">Backup · index</div>
+
+# Backup slides by topic
+
+<BackupIndex />
+
+<!--
+This is the index of the backup slides. When someone asks a question, I click the topic here and jump straight to that slide.
+-->
+
+---
+routeAlias: b-claims
 ---
 
 <div class="kicker">Backup · API access · every endpoint and its claim</div>
@@ -925,6 +941,7 @@ Every endpoint asks for a claim in the token. Spring checks realm roles, and the
 
 ---
 clicks: 9
+routeAlias: b-filters
 ---
 
 <div class="kicker">Backup · Inside Envoy · real filter order</div>
@@ -953,6 +970,7 @@ Remember that OAuth2-Proxy runs before the JWT check, and that the header rules 
 
 ---
 clicks: 6
+routeAlias: b-six
 ---
 
 <div class="kicker">Backup · Inside Envoy · same checks, different requests</div>
@@ -981,6 +999,8 @@ Every request passes the same checks in Envoy: at the ingress gateway the route,
 The legend at the bottom sums up the codes. A 302 sends you to log in, and a 200 means OK. A 401 means the token is bad, and it always comes from a JWT check. A 403 means you are not allowed, and it usually comes from an ALLOW check. The one exception is a token issued for another audience, which the JWT check answers with a 403.
 -->
 
+---
+routeAlias: b-policy
 ---
 
 <div class="kicker">Backup · browser access · app.localhost</div>
@@ -1077,6 +1097,7 @@ This is the policy for browser access. For app.localhost, Istio asks OAuth2-Prox
 
 ---
 clicks: 7
+routeAlias: b-headers
 ---
 
 <div class="kicker">Backup · browser access · sensitive headers per hop</div>
@@ -1105,6 +1126,7 @@ Now let's follow one browser request and look at every sensitive header on the w
 
 ---
 clicks: 5
+routeAlias: b-lifetimes
 ---
 
 <div class="kicker">Backup · token and session lifetimes</div>
@@ -1129,6 +1151,7 @@ This slide shows how long each thing lives. The time axis is logarithmic, so tha
 
 ---
 clicks: 3
+routeAlias: b-limits
 ---
 
 <div class="kicker">Backup · Keycloak session limits</div>
@@ -1155,6 +1178,7 @@ So how long can Alice stay logged in without typing her password?
 
 ---
 clicks: 5
+routeAlias: b-cookie
 ---
 
 <div class="kicker">Backup · session cookie path</div>
@@ -1173,6 +1197,8 @@ Let's follow the session cookie through one request.
 [click] 5. On the way back, no identity header is returned to the browser. The browser only gets a new cookie when the session was refreshed.
 -->
 
+---
+routeAlias: b-audience
 ---
 
 <div class="kicker">Backup · audience and scopes</div>
@@ -1213,6 +1239,8 @@ Realm roles or client roles? Realm roles are for permissions that mean the same 
 The same idea exists in every major identity provider: Entra ID uses api://reports/.default, Auth0 has an audience parameter, and RFC 8707 standardizes it as resource indicators. RFC 9068 requires the aud claim in JWT access tokens.
 -->
 
+---
+routeAlias: b-lessons
 ---
 
 <div class="kicker">Backup · lessons from building the POC</div>
