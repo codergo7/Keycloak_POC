@@ -982,6 +982,66 @@ The legend at the bottom sums up the codes. A 302 sends you to log in, and a 200
 -->
 
 ---
+clicks: 6
+routeAlias: b-filters
+---
+
+<div class="kicker">Backup · inside Envoy</div>
+
+# From Istio YAML to envoy.filters.http.*
+
+<EnvoyFilters />
+
+<!--
+Envoy handles every request with a chain of HTTP filters. Each one has a name like envoy.filters.http.jwt_authn. Envoy has never heard of a RequestAuthentication or an AuthorizationPolicy.
+
+[click] istiod is the translator. It reads our YAML, turns it into Envoy configuration, and pushes it to every proxy. Istio itself is never in the request path. This command shows the real chain on our gateway, in this order.
+
+[click] The CUSTOM policy becomes two filters. A shadow rbac filter only marks the requests that match its rules, and ext_authz calls OAuth2-Proxy for those. A 302 to the login page comes from here.
+
+[click] RequestAuthentication becomes jwt_authn. It checks the signature, the issuer and the expiry, and writes the claims into the request's metadata. Notice the keys are inline: istiod fetched them from Keycloak. A request without a token passes; a bad token gets a 401.
+
+[click] The ALLOW policy becomes rbac. rbac never sees the token, it only reads what jwt_authn wrote. "Any request principal" turns into "iss and sub are set". That's why a token without a sub gets a 403.
+
+[click] The VirtualService becomes the route table, and the router filter is always last. It's not a check, it just sends the request on. A 503 comes from here.
+
+[click] The sidecar runs the same filters, minus ext_authz, because there's no CUSTOM policy there. Its jwt_authn also checks the audience and writes the identity headers, and its rbac checks the roles.
+-->
+
+---
+clicks: 9
+routeAlias: b-debug
+---
+
+<div class="kicker">Backup · troubleshooting</div>
+
+# How do I debug a 401 or 403?
+
+<DebugTree />
+
+<!--
+When something is denied, the first question is: which filter said no? The status code and the short body text tell you, and every message here came from our cluster.
+
+[click] A 302 to Keycloak comes from ext_authz: OAuth2-Proxy found no session. For a new browser that's normal.
+
+[click] 401, "Jwt verification fails": the signature doesn't match Keycloak's keys. Either the token was changed, or istiod still has old keys.
+
+[click] 401, "Jwt is expired": the token is older than 5 minutes. Get a new one.
+
+[click] 401, "Jwt issuer is not configured": the token comes from an issuer that RequestAuthentication doesn't list, for example another realm.
+
+[click] 403, "Audiences in Jwt are not allowed": the token is valid, but it was issued for another API. Ask for the right scope.
+
+[click] 403, "RBAC: access denied", and the response has no upstream time header: the gateway denied it, so there was no token, or the path isn't in the gateway's rules.
+
+[click] The same 403, but with the upstream time header: the gateway let it through, and the sidecar found no matching role. Decode the token and compare its roles with the policy.
+
+[click] And a 503 isn't a policy at all: the pod is down, or the mesh certificates expired, which happens after the laptop sleeps.
+
+[click] These four tools answer almost every case: curl with -i, Envoy debug logging, the sidecar's logs, and decoding the token.
+-->
+
+---
 clicks: 4
 routeAlias: b-spoof
 ---
@@ -1139,6 +1199,33 @@ Now let's follow one browser request and look at every sensitive header on the w
 -->
 
 ---
+clicks: 6
+routeAlias: b-db
+---
+
+<div class="kicker">Backup · inside the cluster</div>
+
+# Who can reach the database?
+
+<DbPolicy />
+
+<!--
+Keycloak keeps everything in Postgres: users, password hashes, sessions, its signing keys. So who in the cluster can log in to it?
+
+[click] Before, the answer was: everyone. We tried psql from three other places: OAuth2-Proxy, a pod in another namespace, and a pod outside the mesh. All three could read Keycloak's user table. Only the password stood in the way.
+
+[click] Every pod with a sidecar already has an identity: a certificate for its service account. Keycloak was using the namespace's default account, the same one as Postgres, so we gave it its own.
+
+[click] Then one ALLOW rule: only Keycloak's identity, only on port 5432. Everything that's not on the list is denied.
+
+[click] Now only Keycloak gets in. The others get their connection closed. There's no 403 here, because this isn't HTTP. And the smoke test checks this from now on.
+
+[click] Under the hood, it's a different Envoy filter: network rbac, for TCP. It only knows who is calling and on which port. No paths, no tokens.
+
+[click] It doesn't cover everything. Whoever can create a pod with Keycloak's service account gets its identity. And Keycloak and OAuth2-Proxy still accept anyone in the mesh. The next steps would be a deny-all policy for the namespace, and strict mTLS.
+-->
+
+---
 clicks: 5
 routeAlias: b-lifetimes
 ---
@@ -1246,6 +1333,39 @@ What happens when Keycloak stops? I measured it: I logged in, took a token, and 
 
 
 ---
+clicks: 9
+routeAlias: b-jwks
+---
+
+<div class="kicker">Backup · RequestAuthentication</div>
+
+# Where do the keys come from?
+
+<JwksFlow />
+
+<!--
+We have two RequestAuthentications, one at the gateway and one at the sidecar. Both check Keycloak's signature, and neither of them ever talks to Keycloak. Here's how.
+
+[click] Keycloak signs every token with the realm's private key. The token's header says which key: the kid. The private key never leaves Keycloak.
+
+[click] The token also says who issued it: iss. Each RequestAuthentication rule has an issuer, and Envoy uses the rule whose issuer matches exactly, with that rule's keys. If none matches, that's a 401. Keycloak puts its public hostname in iss, and inside a pod that name points to the pod itself. That's why the keys are fetched from the internal service name instead.
+
+[click] istiod, not Envoy, fetches the public keys from the jwksUri. Both of our rules use the same URI, so it's one fetch, not one per proxy.
+
+[click] istiod copies the keys into each proxy's config and pushes it. The keys live inside Envoy.
+
+[click] So every request is checked offline: find the key by kid, check the signature, issuer, expiry, and at the sidecar the audience. That's why tokens kept working while Keycloak was down.
+
+[click] istiod fetches the keys again every 20 minutes. That's PILOT_JWT_PUB_KEY_REFRESH_INTERVAL. If they changed, it pushes the new ones.
+
+[click] If the fetch fails, for example Keycloak wasn't ready when istiod started, istiod fails closed. It pushes a key nobody can sign for, and every token gets a 401. We hit this: about 20 minutes. The fix is to restart istiod once Keycloak is up.
+
+[click] The same timer matters when you rotate keys. A new key is unknown to the proxies until the next refresh. So add it as passive first, wait the 20 minutes, then make it active, and keep the old one around until its tokens have expired.
+
+[click] These are the settings that decide how fast things change: five minutes for a token, twenty minutes for keys.
+-->
+
+---
 routeAlias: b-audience
 ---
 
@@ -1314,66 +1434,6 @@ A common question: what if one service calls another? Which token does it send? 
 [click] The new token is still alice, but now with B as the audience.
 
 [click] So: acting for itself, use client credentials. Acting for a user, use token exchange. And never widen a token's audience just to make a call work.
--->
-
----
-clicks: 6
-routeAlias: b-filters
----
-
-<div class="kicker">Backup · inside Envoy</div>
-
-# From Istio YAML to envoy.filters.http.*
-
-<EnvoyFilters />
-
-<!--
-Envoy handles every request with a chain of HTTP filters. Each one has a name like envoy.filters.http.jwt_authn. Envoy has never heard of a RequestAuthentication or an AuthorizationPolicy.
-
-[click] istiod is the translator. It reads our YAML, turns it into Envoy configuration, and pushes it to every proxy. Istio itself is never in the request path. This command shows the real chain on our gateway, in this order.
-
-[click] The CUSTOM policy becomes two filters. A shadow rbac filter only marks the requests that match its rules, and ext_authz calls OAuth2-Proxy for those. A 302 to the login page comes from here.
-
-[click] RequestAuthentication becomes jwt_authn. It checks the signature, the issuer and the expiry, and writes the claims into the request's metadata. Notice the keys are inline: istiod fetched them from Keycloak. A request without a token passes; a bad token gets a 401.
-
-[click] The ALLOW policy becomes rbac. rbac never sees the token, it only reads what jwt_authn wrote. "Any request principal" turns into "iss and sub are set". That's why a token without a sub gets a 403.
-
-[click] The VirtualService becomes the route table, and the router filter is always last. It's not a check, it just sends the request on. A 503 comes from here.
-
-[click] The sidecar runs the same filters, minus ext_authz, because there's no CUSTOM policy there. Its jwt_authn also checks the audience and writes the identity headers, and its rbac checks the roles.
--->
-
----
-clicks: 9
-routeAlias: b-debug
----
-
-<div class="kicker">Backup · troubleshooting</div>
-
-# How do I debug a 401 or 403?
-
-<DebugTree />
-
-<!--
-When something is denied, the first question is: which filter said no? The status code and the short body text tell you, and every message here came from our cluster.
-
-[click] A 302 to Keycloak comes from ext_authz: OAuth2-Proxy found no session. For a new browser that's normal.
-
-[click] 401, "Jwt verification fails": the signature doesn't match Keycloak's keys. Either the token was changed, or istiod still has old keys.
-
-[click] 401, "Jwt is expired": the token is older than 5 minutes. Get a new one.
-
-[click] 401, "Jwt issuer is not configured": the token comes from an issuer that RequestAuthentication doesn't list, for example another realm.
-
-[click] 403, "Audiences in Jwt are not allowed": the token is valid, but it was issued for another API. Ask for the right scope.
-
-[click] 403, "RBAC: access denied", and the response has no upstream time header: the gateway denied it, so there was no token, or the path isn't in the gateway's rules.
-
-[click] The same 403, but with the upstream time header: the gateway let it through, and the sidecar found no matching role. Decode the token and compare its roles with the policy.
-
-[click] And a 503 isn't a policy at all: the pod is down, or the mesh certificates expired, which happens after the laptop sleeps.
-
-[click] These four tools answer almost every case: curl with -i, Envoy debug logging, the sidecar's logs, and decoding the token.
 -->
 
 ---

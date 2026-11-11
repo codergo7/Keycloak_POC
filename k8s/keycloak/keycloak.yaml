@@ -39,6 +39,15 @@ spec:
               number: 8080
 
 ---
+# Keycloak's own identity in the mesh. Its mTLS certificate says
+# spiffe://cluster.local/ns/identity/sa/keycloak, and postgres-authorization.yaml
+# lets only this identity reach the database.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: keycloak
+  namespace: identity
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,6 +63,7 @@ spec:
       labels:
         app: keycloak
     spec:
+      serviceAccountName: keycloak
       containers:
         - name: keycloak
           image: quay.io/keycloak/keycloak:26.7.3

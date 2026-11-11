@@ -70,6 +70,7 @@ deploy: namespaces load
 	kubectl apply -f k8s/keycloak/postgres.yaml
 	kubectl apply -f k8s/keycloak/realm-configmap.yaml
 	kubectl apply -f k8s/keycloak/keycloak.yaml
+	kubectl apply -f k8s/keycloak/postgres-authorization.yaml
 	kubectl -n identity create serviceaccount oauth2-proxy --dry-run=client -o yaml | kubectl apply -f -
 	kubectl apply -f k8s/oauth2-proxy/oauth2-proxy.yaml
 	kubectl apply -f k8s/app/auth-app.yaml

@@ -404,6 +404,31 @@ Anything else, e.g. `api.localhost/api/internal` from outside, gets 403 at the g
 | `/api/admin` | valid JWT **and** realm role `admin` |
 | anything else (e.g. `/`) | no rule matches → 403 |
 
+### 4.7b ALLOW policy `postgres-allow-keycloak` (Postgres sidecar, TCP)
+
+Not on the request path, but part of the trust boundary: only Keycloak may open a
+connection to Postgres (`k8s/keycloak/postgres-authorization.yaml`).
+
+| Caller | Identity (from its mTLS certificate) | Result |
+|---|---|---|
+| Keycloak | `cluster.local/ns/identity/sa/keycloak` | allowed |
+| OAuth2-Proxy (same namespace) | `…/ns/identity/sa/oauth2-proxy` | connection closed |
+| spring-app (other namespace) | `…/ns/spring-api/sa/default` | connection closed |
+| pod outside the mesh | none (plaintext, no certificate) | connection closed |
+
+- Before the policy, all four could log in with `psql` and read Keycloak's tables.
+- The principal comes from the **mTLS certificate** (SPIFFE ID of the service
+  account), not from a JWT. That is why Keycloak got its own ServiceAccount: with the
+  shared `default` account, every pod in `identity` would have had the same identity.
+- Postgres is TCP, so istiod builds Envoy's **network** rbac filter
+  (`envoy.filters.network.rbac`), not the HTTP one. Only sources (principals,
+  namespaces, IPs) and ports can be matched; paths, methods and JWT claims cannot.
+- A denied TCP connection has no 403: Envoy accepts it and closes it. psql reports
+  "server closed the connection unexpectedly". The Postgres sidecar counts it in
+  `tcp.rbac.denied` (`pilot-agent request GET stats`).
+- Anyone who can create a pod with `serviceAccountName: keycloak` in `identity` gets
+  the same identity, so Kubernetes RBAC on that namespace is part of the boundary.
+
 ### 4.8 Router (gateway)
 
 ```

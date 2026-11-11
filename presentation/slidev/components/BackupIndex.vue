@@ -16,12 +16,14 @@ const groups = [
     { a: 'b-spoof', l: 'Can someone fake who they are?' },
     { a: 'b-policy', l: 'The CUSTOM policy: when OAuth2-Proxy is asked' },
     { a: 'b-headers', l: 'Every sensitive header, hop by hop' },
+    { a: 'b-db', l: 'Who can reach the database?' },
   ] },
   { t: 'Tokens and sessions', cls: 'green', items: [
     { a: 'b-lifetimes', l: 'Token, session and cookie lifetimes' },
     { a: 'b-limits', l: 'Keycloak session limits: idle and max' },
     { a: 'b-logout', l: 'What does signing out really end?' },
     { a: 'b-kcdown', l: 'What if Keycloak goes down?' },
+    { a: 'b-jwks', l: 'Where do the keys come from?' },
   ] },
   { t: 'Design questions', cls: 'navy', items: [
     { a: 'b-audience', l: 'Audience and scopes: likely questions' },

@@ -62,6 +62,7 @@ echo "  • JWT validation failure"
 echo "  • Role-based authorization"
 echo "  • Audience and client-role authorization (reports API)"
 echo "  • OAuth2-Proxy browser redirect"
+echo "  • Database access limited to Keycloak"
 
 # ===========================================================================
 # 1. PUBLIC ENDPOINT
@@ -346,6 +347,31 @@ if [[ "$STATUS" =~ ^30[12378]$ ]] &&
   echo "   Redirect: ${LOCATION%%\?*}"
 else
   fail "Expected OAuth2-Proxy → Keycloak redirect; status=$STATUS location=$LOCATION"
+fi
+
+# ===========================================================================
+# 12. DATABASE ACCESS — ONLY KEYCLOAK
+# ===========================================================================
+
+section "12. Database access — only Keycloak can reach Postgres"
+
+echo "Scenario:"
+echo "  spring-app (another workload in the mesh) opens a TCP connection to Postgres"
+echo "  and sends a Postgres SSLRequest. postgres-allow-keycloak allows only"
+echo "  Keycloak's identity, so Envoy closes the connection without an answer."
+echo "  Keycloak itself still works (tokens were issued in section 3)."
+echo
+
+# Postgres answers an SSLRequest (8 bytes) with a single byte, 'N' or 'S'.
+PG_REPLY="$(kubectl -n spring-api exec deploy/spring-app -c app -- bash -c \
+  'timeout 4 bash -c "exec 3<>/dev/tcp/postgres.identity.svc.cluster.local/5432 && printf \"\x00\x00\x00\x08\x04\xd2\x16\x2f\" >&3 && head -c1 <&3"' 2>/dev/null || true)"
+
+if [[ -z "$PG_REPLY" && -n "$ALICE" ]]; then
+  pass "Postgres refuses spring-app; Keycloak still issues tokens"
+elif [[ -n "$PG_REPLY" ]]; then
+  fail "spring-app reached Postgres (reply '$PG_REPLY'); is postgres-allow-keycloak applied?"
+else
+  fail "Postgres check skipped because Alice token was unavailable"
 fi
 
 # ===========================================================================
