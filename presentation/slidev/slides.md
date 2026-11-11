@@ -530,7 +530,7 @@ Now let's look at our proof of concept, which has two access paths to the same a
 -->
 
 ---
-clicks: 11
+clicks: 12
 ---
 
 <div class="kicker">Istio · ingress gateway and sidecar</div>
@@ -563,6 +563,8 @@ Istio does not run our rules itself. istiod turns each Istio resource into an En
 [click] 10. Spring receives the request with the identity headers and answers 200. Spring did not parse a token or check a role.
 
 [click] 11. Now the same request from bob. His token is valid and passes every filter until the last one. His roles are only user, so no ALLOW rule matches, and the sidecar answers 403 before Spring sees the request.
+
+[click] 12. And this is how the setup grows. The gateway stays the same, and its router sends each path to its backend. Every backend runs in its own namespace with its own sidecar, and next to it sits one pair of resources: a RequestAuthentication that accepts only tokens for that backend's audience, and an AuthorizationPolicy that says which claims each endpoint needs. The reports API in FastAPI already works this way. To add x-api, in any language, we do four things: register a client with its roles and an audience scope in Keycloak, create a namespace with sidecar injection, add the two resources, and add a route. The new application contains no security code, and the next backend follows the same steps.
 -->
 
 ---

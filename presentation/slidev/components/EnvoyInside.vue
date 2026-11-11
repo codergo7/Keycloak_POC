@@ -3,14 +3,23 @@
 // and the Spring sidecar, filter by filter: ext_authz (AuthorizationPolicy CUSTOM),
 // jwt_authn (RequestAuthentication), rbac (AuthorizationPolicy ALLOW), router (VirtualService).
 // The sidecar's jwt_authn decodes the token and stores its claims; rbac then reads them.
-// Click 11 repeats the request as bob, who has no developer role. The slide needs `clicks: 11`.
+// Click 11 repeats the request as bob, who has no developer role. Click 12 shows how the setup
+// grows: more backends, each with its own sidecar and its own RequestAuthentication +
+// AuthorizationPolicy pair, behind the same gateway. The slide needs `clicks: 12`.
 // Token values (alg, kid, roles, aud) were taken from a real token of the running POC.
 import { computed } from 'vue'
 import { useSlideContext } from '@slidev/client'
 
 const { $clicks } = useSlideContext()
-const s = computed(() => Math.min(Math.max($clicks.value, 0), 11))
+const s = computed(() => Math.min(Math.max($clicks.value, 0), 12))
 const bob = computed(() => s.value === 11)
+const more = computed(() => s.value === 12)
+
+// click 12: the other backends, each with its own pair of resources
+const backends = [
+  { ns: 'reports-api', app: 'FastAPI', ra: 'reports-jwt', aud: 'reports-api', ap: 'reports-authorization', claim: 'client roles' },
+  { ns: 'x-api', app: 'x-api', sub: 'any language', ra: 'x-jwt', aud: 'x-api', ap: 'x-authorization', claim: 'client roles', isNew: true },
+]
 
 interface Filter { f: string; res: string; act?: string; ok: string }
 const ingress: Filter[] = [
@@ -24,7 +33,7 @@ const sidecar: Filter[] = [
   { f: 'rbac', res: 'AuthorizationPolicy', act: 'ALLOW', ok: 'ALLOW ✓' },
 ]
 // which stage is active at each click (0–3 ingress, 4–5 sidecar, 6 the app)
-const ACTIVE = [-1, 0, 1, 2, 3, 4, 4, 4, 4, 5, 6, 5]
+const ACTIVE = [-1, 0, 1, 2, 3, 4, 4, 4, 4, 5, 6, 5, 6]
 
 function state(i: number) {
   if (bob.value) return i < 5 ? 'done' : i === 5 ? 'fail' : 'todo'
@@ -153,6 +162,7 @@ const caption = computed(() => [
   'rbac at the sidecar: the ALLOW policy reads request.auth.claims. The rule for /api/headers needs the role developer, and alice has it.',
   'Spring receives the request with the identity headers and answers 200. It contains no token or login code.',
   'Same request as bob: the token is valid, but his roles are only ["user"]. No ALLOW rule matches, so the sidecar answers 403.',
+  'Adding a backend: a namespace with a sidecar, one RequestAuthentication and one AuthorizationPolicy, and a route. The gateway and Keycloak stay the same.',
 ][s.value])
 </script>
 
@@ -178,8 +188,21 @@ const caption = computed(() => [
         <div class="ext" :class="{ on: s === 1, done: s > 1 }">
           <span class="ext-arrow">⇅</span> OAuth2-Proxy <small>external authorizer</small>
         </div>
+        <Transition name="grow">
+          <div v-if="more" class="routes">
+            <b>router · VirtualService</b> one route per backend
+            <div class="steps">
+              <div><i>1</i> Keycloak client + audience scope</div>
+              <div><i>2</i> namespace with <span class="mono">istio-injection: enabled</span></div>
+              <div><i>3</i> RequestAuthentication + AuthorizationPolicy</div>
+              <div><i>4</i> a route in the VirtualService</div>
+            </div>
+          </div>
+        </Transition>
       </div>
 
+      <div class="right">
+      <div class="row">
       <div class="link" :class="{ lit: s >= 5 }"><span /><em>mTLS</em></div>
 
       <div class="proxy sc">
@@ -201,10 +224,42 @@ const caption = computed(() => [
       <div class="end app" :class="{ on: s === 10, off: bob }">
         <div class="end-name">Spring</div><small>{{ s === 10 ? '200 OK' : bob ? 'not reached' : ':8080' }}</small>
       </div>
+      </div>
+
+      <!-- click 12: more backends behind the same gateway -->
+      <TransitionGroup name="grow">
+        <div v-for="(b, k) in (more ? backends : [])" :key="b.ns" class="row extra" :class="{ isnew: b.isNew }"
+          :style="{ transitionDelay: k * 0.35 + 's' }">
+          <div class="link lit branch"><span /><em>mTLS</em></div>
+          <div class="proxy sc">
+            <div class="proxy-label">Sidecar <span>· Envoy · {{ b.ns }}</span><b v-if="b.isNew" class="newtag">new</b></div>
+            <div class="filters">
+              <div class="pill done">
+                <div class="f">jwt_authn</div>
+                <div class="res">RequestAuthentication</div>
+                <div class="rname">{{ b.ra }}</div>
+                <div class="verdict">aud {{ b.aud }}</div>
+              </div>
+              <div class="pill done">
+                <div class="f">rbac<b class="act">ALLOW</b></div>
+                <div class="res">AuthorizationPolicy</div>
+                <div class="rname">{{ b.ap }}</div>
+                <div class="verdict">{{ b.claim }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="link lit"><span /></div>
+          <div class="end app"><div class="end-name">{{ b.app }}</div><small>{{ b.sub || ':8080' }}</small></div>
+        </div>
+        <div v-if="more" key="dots" class="row dots" style="transition-delay: 0.7s">
+          <span>⋮</span> the next backend: the same pair
+        </div>
+      </TransitionGroup>
+      </div>
     </div>
 
     <!-- the detail -->
-    <div class="detail">
+    <div v-if="!more" class="detail">
       <!-- col 1: the request -->
       <div class="col">
         <div class="col-title">The request</div>
@@ -459,4 +514,27 @@ const caption = computed(() => [
 .view-leave-to { opacity: 0; }
 .cap-enter-active, .cap-leave-active { transition: opacity 0.2s; }
 .cap-enter-from, .cap-leave-to { opacity: 0; }
+
+/* click 12: more backends */
+.right { flex: 1.65; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.row { display: flex; align-items: stretch; }
+.right > .row:first-child .proxy.sc { flex: 1; }
+.row .proxy.sc { flex: 1; }
+.row.extra .proxy { background: rgba(255, 255, 255, 0.85); }
+.row.extra.isnew .proxy { border: 2px dashed var(--orange); background: #fffaf6; }
+.row.extra.isnew .pill.done { background: #fbe9dc; border-color: #fbe9dc; }
+.row.extra .end.app { background: #def3e8; }
+.row.extra.isnew .end.app { background: #fbe9dc; }
+.rname { font: 600 0.5rem 'JetBrains Mono', monospace; color: var(--navy); overflow-wrap: anywhere; }
+.newtag { font: 700 0.46rem 'JetBrains Mono', monospace; color: #fff; background: var(--orange); border-radius: 4px; padding: 0.05rem 0.25rem; margin-left: 0.3rem; text-transform: none; }
+.link.branch span::before { content: ''; position: absolute; left: 0; top: -60px; width: 2px; height: 60px; background: var(--blue); }
+.link.branch span { overflow: visible; background: var(--blue); }
+.row.dots { font: 600 0.55rem 'JetBrains Mono', monospace; color: var(--muted); padding-left: 30px; align-items: center; gap: 0.4rem; }
+.row.dots span { font-size: 1rem; color: var(--orange); }
+.routes { margin-top: 0.6rem; width: 62%; border-radius: 8px; background: #fff; border: 1px solid #e6eaf2; padding: 0.35rem 0.45rem; font-size: 0.6rem; color: var(--muted); }
+.routes > b { font: 700 0.6rem 'JetBrains Mono', monospace; color: var(--navy); margin-right: 0.3rem; }
+.steps { margin-top: 0.35rem; display: grid; grid-template-columns: 1fr; gap: 0.3rem; color: #1b2433; font-size: 0.6rem; }
+.steps i { font-style: normal; display: inline-block; width: 0.95rem; height: 0.95rem; line-height: 0.95rem; text-align: center; border-radius: 50%; background: var(--orange); color: #fff; font-size: 0.5rem; font-weight: 700; margin-right: 0.25rem; }
+.grow-enter-active { transition: all 0.5s cubic-bezier(0.2, 0.7, 0.2, 1); }
+.grow-enter-from { opacity: 0; transform: translateY(-12px); }
 </style>
