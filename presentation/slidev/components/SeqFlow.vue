@@ -32,7 +32,7 @@ interface Step {
 const steps: Step[] = [
   {
     from: 0, to: 1, kind: 'front', label: '1 · GET / (no cookie)',
-    title: 'The browser knocks on the door',
+    title: 'The first request has no session cookie',
     text: 'Alice opens the app. She has no cookie yet. The CUSTOM policy makes the ingress ask OAuth2-Proxy first.',
     code: 'GET / HTTP/1.1\nHost: app.localhost:8080\nUser-Agent: Mozilla/5.0\nCookie: (none)',
     chips: ['front channel', 'CUSTOM policy'],
@@ -98,7 +98,7 @@ const steps: Step[] = [
   {
     from: 2, to: 0, kind: 'front', label: '10 · 302 / + Set-Cookie',
     title: 'A session cookie is born',
-    text: 'OAuth2-Proxy seals the session, tokens included, in an encrypted cookie and sends Alice back to the page she asked for.',
+    text: 'OAuth2-Proxy stores the session, tokens included, in an encrypted cookie and sends Alice back to the page she asked for.',
     code: 'HTTP/1.1 302 Found\nLocation: /\nSet-Cookie: _oauth2_proxy=<enc>;\n  HttpOnly; SameSite=Lax;\n  Max-Age=28800',
     chips: ['encrypted', 'HttpOnly', 'refresh 4m · expire 8h'],
   },

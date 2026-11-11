@@ -7,14 +7,14 @@ APP_IMAGE ?= iam-poc-app:dev
 REPORTS_IMAGE ?= iam-poc-reports:dev
 
 .PHONY: help prereqs cluster istio namespaces build load deploy wait up status \
-        token-alice token-bob token-bob-reports token-admin decode smoke demo-door2 browser keycloak logs \
+        token-alice token-bob token-bob-reports token-admin decode smoke demo-api demo-door2 browser keycloak logs \
         logs-kc logs-proxy logs-app logs-reports shell-app restart clean reset
 
 help:
 	@echo "IAM POC targets"
 	@echo "  make up            Create Kind + Istio + Keycloak + oauth2-proxy + app"
 	@echo "  make smoke         Run API/JWT/RBAC smoke tests"
-	@echo "  make demo-door2    Guided live demo of the seven Door 2 checks (AUTO=1: no pauses)"
+	@echo "  make demo-api      Guided live demo of the seven API access checks (AUTO=1: no pauses)"
 	@echo "  make token-alice   Print Alice access token"
 	@echo "  make token-bob-reports  Print Bob access token with scope=reports (aud reports-api)"
 	@echo "  make show-claims-bob-reports  Decode it: aud has spring-api and reports-api"
@@ -127,8 +127,10 @@ decode:
 smoke:
 	@./scripts/smoke-test.sh
 
-demo-door2:
-	@AUTO="$(AUTO)" ./scripts/demo-door2.sh
+demo-api:
+	@AUTO="$(AUTO)" ./scripts/demo-api.sh
+
+demo-door2: demo-api   # old name, kept as an alias
 
 browser:
 	@echo "Open http://app.localhost:8080"

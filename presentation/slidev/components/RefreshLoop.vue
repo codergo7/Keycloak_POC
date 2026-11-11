@@ -78,7 +78,7 @@ const steps: Step[] = [
   {
     from: 0, to: 2, kind: 'fail', row: 5, label: 'GET /auth → login form',
     title: 'Keycloak can’t help either',
-    text: 'KEYCLOAK_IDENTITY points to the same dead session, so there is no silent SSO. Alice types her password again.',
+    text: 'KEYCLOAK_IDENTITY points to the same expired session, so single sign-on cannot log her in. Alice types her password again.',
     code: 'GET /realms/demo/protocol/openid-connect/auth\nCookie: KEYCLOAK_IDENTITY=…  (session gone)\n← 200 login form\nSet-Cookie: KEYCLOAK_IDENTITY=; Max-Age=0',
     chips: ['user interaction needed'],
   },
@@ -151,7 +151,7 @@ function isActor(a: number) {
       <Transition name="panel" mode="out-in">
         <div v-if="active" :key="current">
           <div class="step-no">step {{ current }} / {{ steps.length }} ·
-            <span :style="{ color: color[active.kind] }">{{ failing ? 'session expired' : active.kind === 'back' ? 'back channel' : 'silent refresh' }}</span>
+            <span :style="{ color: color[active.kind] }">{{ failing ? 'session expired' : active.kind === 'back' ? 'back channel' : 'token refresh' }}</span>
           </div>
           <h3>{{ active.title }}</h3>
           <p>{{ active.text }}</p>

@@ -28,7 +28,7 @@ configuration and pushes it to the ingress gateway and to every sidecar.
 | VirtualService `api`, `oauth2-proxy`, `keycloak` | route table `http.8080` (virtual hosts, routes, header rules) | ingress gateway | `k8s/app/app.yaml`, `k8s/oauth2-proxy/oauth2-proxy.yaml`, `k8s/keycloak/keycloak.yaml` |
 | AuthorizationPolicy `oauth2-external-auth` (CUSTOM) | `rbac` shadow filter + `ext_authz` filter | ingress gateway | `k8s/istio/ingress-authorization.yaml` |
 | mesh config `extensionProviders.oauth2-proxy` | `ext_authz` settings (which headers go where) | ingress gateway | `k8s/istio/istio-cm.yaml` |
-| RequestAuthentication `demo-jwt-valiation` | `jwt_authn` filter | ingress gateway | `k8s/istio/ingress-authorization.yaml` |
+| RequestAuthentication `demo-jwt-validation` | `jwt_authn` filter | ingress gateway | `k8s/istio/ingress-authorization.yaml` |
 | AuthorizationPolicy `ingress-authorization` (ALLOW) | `rbac` filter | ingress gateway | `k8s/istio/ingress-authorization.yaml` |
 | RequestAuthentication `keycloak-jwt` | `jwt_authn` filter | Spring sidecar | `k8s/app/auth-app.yaml` |
 | AuthorizationPolicy `spring-workload-authorization` (ALLOW) | `rbac` filter | Spring sidecar | `k8s/app/auth-app.yaml` |
@@ -67,7 +67,7 @@ in order:
 istio.metadata_exchange
 envoy.filters.http.rbac        (shadow)   ◄── CUSTOM policy: "does oauth2-proxy need to be asked?"
 envoy.filters.http.ext_authz              ◄── CUSTOM policy: ask oauth2-proxy
-envoy.filters.http.jwt_authn              ◄── RequestAuthentication demo-jwt-valiation
+envoy.filters.http.jwt_authn              ◄── RequestAuthentication demo-jwt-validation
 envoy.filters.http.rbac        (ALLOW)    ◄── AuthorizationPolicy ingress-authorization
 grpc_stats, istio.alpn, fault, cors, istio.stats
 envoy.filters.http.router                 ◄── VirtualService route: destination + header rules
@@ -367,7 +367,7 @@ that has no token. Requiring a token is the job of an AuthorizationPolicy
 
 The two RequestAuthentications in this repo:
 
-| | `istio-system/demo-jwt-valiation` | `spring-api/keycloak-jwt` |
+| | `istio-system/demo-jwt-validation` | `spring-api/keycloak-jwt` |
 |---|---|---|
 | Applies to | ingress gateway (`app: istio-ingressgateway`) | Spring sidecar (`app: spring-app`) |
 | Issuers | realms `demo` and `master` | realm `demo` |

@@ -86,12 +86,12 @@ export const flows = {
     actors: ['Client', 'Gateway', 'OAuth2-Proxy', 'Spring'],
     intro: {
       title: 'Can a client fake the identity headers?',
-      text: 'Spring receives the user’s name in X-Auth-Request-User. What stops a client from sending that header itself? Click to try it on both doors.',
+      text: 'Spring receives the user’s name in X-Auth-Request-User. What stops a client from sending that header itself? Click to try it on both access paths.',
     },
     steps: [
       {
         from: 0, to: 1, kind: 'fail', row: 0, label: 'fake User: admin',
-        title: 'Door 1: bob fakes his identity header',
+        title: 'Browser access: bob fakes his identity header',
         text: 'bob sends his own session cookie, plus a header that claims he is admin.',
         code: 'GET app.localhost/api/whoami\nCookie: _oauth2_proxy=<bob>\nX-Auth-Request-User: admin',
         chips: ['fake header'],
@@ -108,11 +108,11 @@ export const flows = {
         title: 'Spring sees bob',
         text: 'The fake value never arrives. Measured on the cluster: Spring shows bob’s id.',
         code: '"xAuthRequestUser": "b774…"   (bob)',
-        chips: ['safe on Door 1'],
+        chips: ['safe on browser access'],
       },
       {
         from: 0, to: 1, kind: 'fail', row: 3, label: 'alice + fake User',
-        title: 'Door 2: nothing overwrites it',
+        title: 'API access: nothing overwrites it',
         text: 'On api.localhost there is no ext_authz. The gateway checks the token and, before our fix, passed the fake header on to Spring.',
         code: 'GET api.localhost/api/whoami\nAuthorization: Bearer <alice>\nX-Auth-Request-User: admin\n← "xAuthRequestUser": "admin"   (before the fix)',
         chips: ['found while testing'],

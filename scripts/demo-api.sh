@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Live demo of Door 2 (api.localhost): the seven checks from the "Prove Door 2"
+# Live demo of API access (api.localhost): the seven checks from the "Demo: API access"
 # slide, one at a time, with the command, the result and what it proves.
 #
-#   make demo-door2          pause before each check (press Enter)
-#   make demo-door2 AUTO=1   run straight through
+#   make demo-api            press Enter to run each request and to show the next check
+#   make demo-api AUTO=1     run straight through
 #
 # Step 7 adds bob to /finance/managers through the Keycloak admin API and
 # removes him again at the end, so the demo can be repeated.
@@ -23,16 +23,21 @@ fi
 PASSED=0
 FAILED=0
 
+STEPS=0
 step() {
+  # from the second check on, wait before showing the next one
+  if (( STEPS > 0 )); then pause "press Enter for the next check"; fi
+  STEPS=$((STEPS + 1))
   echo
   echo "${B}${CYAN}━━━ $1 ━━━${R}"
   shift
   for line in "$@"; do echo "  $line"; done
 }
 
+# pause [PROMPT]: wait for Enter (skipped with AUTO=1 or without a terminal)
 pause() {
   if [[ "$AUTO" != "1" && -t 0 ]]; then
-    read -r -p "  ${DIM}press Enter to run${R} " _
+    read -r -p "  ${DIM}${1:-press Enter to run}${R} " _
   fi
 }
 
@@ -126,7 +131,7 @@ preflight() {
   fi
 }
 
-echo "${B}Door 2 · api.localhost · seven checks with curl${R}"
+echo "${B}API access · api.localhost · seven checks with curl${R}"
 echo "${DIM}Expected result first, then the real answer from the cluster.${R}"
 preflight
 
@@ -174,7 +179,7 @@ step "3. Tampered token" \
   "One character changed in alice's token: the signature no longer matches." \
   "The gateway's RequestAuthentication verifies it with the keys from ${B}jwksUri${R}, for the listed ${B}issuer${R}." \
   "A token that is present but invalid is rejected with 401 before any AuthorizationPolicy runs."
-snippet k8s/istio/ingress-authorization.yaml "RequestAuthentication demo-jwt-valiation" <<'YAML'
+snippet k8s/istio/ingress-authorization.yaml "RequestAuthentication demo-jwt-validation" <<'YAML'
 jwtRules:
   - issuer: "http://keycloak.localhost:8080/realms/demo"
     jwksUri: "http://keycloak.identity.svc.cluster.local:8080/realms/demo/protocol/openid-connect/certs"
@@ -222,6 +227,7 @@ pause
 run -H "Authorization: Bearer $ALICE" "$API/api/user"
 expect 200 "role user is enough for /api/user"
 show_cmd "curl -H \"Authorization: Bearer \$ALICE\" $API/api/admin"
+pause
 run -H "Authorization: Bearer $ALICE" "$API/api/admin"
 expect 403 "valid token, but no admin role" "RBAC: access denied"
 
@@ -283,6 +289,7 @@ pause
 run -H "Authorization: Bearer $BOB_R" "$API/reports"
 expect 200 "viewer may read reports"
 show_cmd "curl -X POST -H \"Authorization: Bearer \$BOB_R\" -H 'Content-Type: application/json' -d '{\"title\":\"Q4 forecast\"}' $API/reports"
+pause
 run -X POST -H "Authorization: Bearer $BOB_R" -H 'Content-Type: application/json' -d '{"title":"Q4 forecast"}' "$API/reports"
 expect 403 "creating needs ${B}editor${R}, bob is only a viewer" "RBAC: access denied"
 
@@ -299,7 +306,7 @@ if [[ -z "$BOB_ID" || "$BOB_ID" == null || -z "$GROUP_ID" || "$GROUP_ID" == null
   exit 1
 fi
 show_cmd "PUT $KC/admin/realms/demo/users/<bob>/groups/<finance/managers>"
-pause
+pause "press Enter to add bob to /finance/managers"
 curl -sS -o /dev/null -X PUT -H "Authorization: Bearer $ADMIN_AT" "$KC/admin/realms/demo/users/$BOB_ID/groups/$GROUP_ID"
 trap 'curl -sS -o /dev/null -X DELETE -H "Authorization: Bearer $ADMIN_AT" "$KC/admin/realms/demo/users/$BOB_ID/groups/$GROUP_ID"' EXIT
 BOB_R2="$(token bob reports)" || exit 1
@@ -307,10 +314,12 @@ claims "$BOB_R2"
 echo "  Same principal, same policy: the new token now has ${B}editor${R}, so the \"Create reports\" rule matches."
 show_cmd "BOB_R=\$(make -s token-bob-reports)"
 show_cmd "curl -X POST -H \"Authorization: Bearer \$BOB_R\" -H 'Content-Type: application/json' -d '{\"title\":\"Q4 forecast\"}' $API/reports"
+pause
 run -X POST -H "Authorization: Bearer $BOB_R2" -H 'Content-Type: application/json' -d '{"title":"Q4 forecast"}' "$API/reports"
 expect 201 "the group gave bob ${B}editor${R}: only a claim changed, no code, no redeploy"
 
 # ---------------------------------------------------------------------------
+pause "press Enter for the summary"
 curl -sS -o /dev/null -X DELETE -H "Authorization: Bearer $ADMIN_AT" "$KC/admin/realms/demo/users/$BOB_ID/groups/$GROUP_ID"
 trap - EXIT
 echo

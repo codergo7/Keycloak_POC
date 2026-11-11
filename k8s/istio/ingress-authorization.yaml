@@ -1,7 +1,7 @@
 apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
-  name: demo-jwt-valiation
+  name: demo-jwt-validation
   namespace: istio-system
 spec:
   selector:
