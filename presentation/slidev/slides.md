@@ -32,17 +32,16 @@ class: navy
   </p>
 
   <div class="mt-14 text-sm muted" v-motion :initial="{ opacity: 0 }" :enter="{ opacity: 1, transition: { delay: 1200 } }">
-    Gokhan Ozturk · 18/11/2016 - Lunch&Learn - Klarrio
+    Gokhan Ozturk · 18/11/2026 · Lunch &amp; Learn · Klarrio
   </div>
 </div>
 
 <!--
-Welcome to the presentation about claims-based authorization using Keycloak, OAuth2-Proxy and Istio.
+Welcome, everyone, and thanks for coming. Today's topic is a small proof of concept I built with Keycloak, OAuth2-Proxy and Istio.
 
-With this presentation I want to show you how we take security out of the application. Keycloak, OAuth2-Proxy and Istio decide who you are and what you may do, and the application keeps only its business rules. At the end I will change a user's access live, without touching any code.
+Here's the question behind it: what if our applications had no login code and no role checks at all, and we could still change what a user may do just by changing a group in Keycloak? At the end of this talk, I'll show exactly that, live.
 
-I am not going to deep dive into each technology. I will summarize each one and show how they handle authentication and authorization together.
-
+I prepared more slides than fit in our time, so I left some out. They're at the end as backup, so if you have a question about something I skip, just ask, and I can show them.
 -->
 
 ---
@@ -69,16 +68,18 @@ I am not going to deep dive into each technology. I will summarize each one and 
   </div>
 </div>
 
-<p class="remember mt-6">The goal: <b>security out of the application.</b> The platform decides who you are and what you may do; the app keeps its business rules.</p>
+<p class="remember mt-6">The goal: <b>security out of the application.</b> The platform decides who you are and which endpoints you may call; the app keeps the rules that need its own data.</p>
 
 <!--
-The goal of this talk is in the line at the bottom: security out of the application. The platform decides who you are and what you may do, and the app keeps only its business rules. To get there, the talk has three parts.
+The goal is the line at the bottom: security out of the application. The platform decides who you are and which endpoints you may call. Not everything moves out, though. A rule like "only the owner may edit this report" needs the application's data, so it stays in the app. We'll come back to that at the end.
 
-[click] First is the theory, from authentication and authorization to tokens and the login flow.
+I won't go deep into each tool. I'll summarize each one, and then show how they work together.
 
-[click] Then we look at the two ways into our POC: browser access for people, and API access for scripts that send a bearer token.
+[click] First, the theory, from authentication and authorization to tokens and the login flow.
 
-[click] Finally the live demo, one after each access path.
+[click] Then our POC, with its two ways in: browser access for people, and API access for scripts that send a bearer token.
+
+[click] And finally the live demo.
 -->
 
 ---
@@ -96,7 +97,6 @@ The goal of this talk is in the line at the bottom: security out of the applicat
     <p><b>Identification:</b> you claim an identity (“I am alice”)<br>
     <b>Verification:</b> you prove it (password, OTP, certificate)<br>
     <b>Result:</b> a trusted identity, carried in a token or session</p>
-    <div class="mt-3 text-sm italic text-[var(--blue)]">Airport: showing your passport</div>
     <div class="mt-3"><span class="chip orange">401 = who are you?</span></div>
   </div>
   <div v-click class="card !p-5">
@@ -107,17 +107,16 @@ The goal of this talk is in the line at the bottom: security out of the applicat
     <p><b>Roles &amp; groups:</b> admin, developer, /engineering<br>
     <b>Scopes:</b> what a client may ask on your behalf<br>
     <b>Claims:</b> the facts in the token that rules check</p>
-    <div class="mt-3 text-sm italic text-[var(--orange)]">Airport: your boarding pass and gate</div>
     <div class="mt-3"><span class="chip red">403 = I know you, and no</span></div>
   </div>
 </div>
 
 <!--
-Authentication answers the question "who are you?". You claim an identity and then prove it, for example with a password. When authentication fails, the answer is 401, meaning the client must authenticate or log in to get the requested response
+Authentication answers one question: who are you? You claim an identity, and then you prove it, for example with a password. If that fails, the answer is 401: please log in first.
 
-[click] Authorization answers the next question, "what are you allowed to do?". The decision is based on roles, scopes and claims, and Claims are simply the facts written in the token. When authorization fails, the answer is 403, which means we know who you are but you are not allowed to do this.
+[click] Authorization comes next: what are you allowed to do? The answer depends on your roles, scopes and claims. Claims are simply facts written in the token. If authorization fails, the answer is 403: we know who you are, but you can't do this.
 
-The order never changes, because we cannot decide what you may do until we know who you are.
+The order never changes. We can't decide what you may do before we know who you are.
 -->
 
 ---
@@ -145,39 +144,36 @@ This is what I built: one kind cluster on my laptop, with four namespaces.
 -->
 
 ---
+clicks: 5
+---
 
 <div class="kicker">Components</div>
 
 # Four components, four jobs
 
-<div class="grid grid-cols-4 gap-4 mt-5">
-  <div v-for="(c, i) in [
-      { icon: 'i-carbon-password', n: 'Keycloak', r: 'Identity provider', d: 'Knows the users, checks passwords, issues signed tokens.', cls: '' },
-      { icon: 'i-carbon-earth', n: 'OAuth2-Proxy', r: 'Browser login', d: 'Runs the login flow for browsers and keeps the session cookie.', cls: '' },
-      { icon: 'i-carbon-security', n: 'Istio', r: 'Policy enforcement', d: 'Validates tokens and applies access rules at the edge and at each pod.', cls: 'orange' },
-      { icon: 'i-carbon-code', n: 'Spring Boot · FastAPI', r: 'Applications', d: 'Do their business job. No login code, no token parsing.', cls: 'navy' },
-    ]" :key="c.n" class="card !p-4"
-    v-motion :initial="{ opacity: 0, y: 50, rotateX: 40 }" :enter="{ opacity: 1, y: 0, rotateX: 0, transition: { delay: 120 + i * 160, type: 'spring', stiffness: 120, damping: 14 } }">
-    <span class="icon-dot mb-3" :class="c.cls"><span :class="c.icon" /></span>
-    <h3>{{ c.n }}</h3>
-    <div class="mono text-xs mb-2" :class="i === 2 ? 'text-[var(--orange)]' : 'text-[var(--blue)]'">{{ c.r }}</div>
-    <p>{{ c.d }}</p>
-  </div>
-</div>
+<ComponentsFlow />
 
-<p v-click class="remember"><b>One line to remember:</b> Keycloak <i>authenticates the user</i>, OAuth2-Proxy <i>keeps the browser session</i>, Istio <i>enforces the policies</i>.</p>
+<p v-click="5" class="remember"><b>One line to remember:</b> Keycloak <i>authenticates the user</i>, OAuth2-Proxy <i>keeps the browser session</i>, Istio <i>enforces the policies</i>.</p>
 
 <!--
-Each of the four components has one job. Keycloak knows the users, checks their passwords and issues signed tokens. OAuth2-Proxy handles the login for browsers and keeps the session in a cookie. Istio verifies tokens and enforces the access rules. The applications, Spring Boot and FastAPI, do the business work. They are written in two languages, and neither contains any login or token code.
+Each of the four components has one job.
 
-[click] You can remember it in one sentence: Keycloak authenticates the user, OAuth2-Proxy keeps the browser session, and Istio enforces the policies.
+[click] Keycloak is the identity provider. It knows the users, checks their passwords, and issues signed tokens.
+
+[click] OAuth2-Proxy runs the login for browsers. It gets the tokens from Keycloak and keeps the session in a cookie.
+
+[click] Istio enforces the rules. OAuth2-Proxy hands it the identity headers and the token, and Istio checks them at the gateway and again at each pod.
+
+[click] And the applications, Spring Boot and FastAPI, just do their business job. They get a request that has already been checked, so they need no login code and no token code.
+
+[click] So, in one sentence: Keycloak authenticates the user, OAuth2-Proxy keeps the browser session, and Istio enforces the policies.
 -->
 
 ---
 
 <div class="kicker">Keycloak · the identity provider</div>
 
-# Six terms you need for Keycloak
+# Five terms you need for Keycloak
 
 <div class="tbl-card mt-3">
 <table class="tbl">
@@ -188,7 +184,6 @@ Each of the four components has one job. Keycloak knows the users, checks their 
     <tr v-click><td class="strong">User &amp; group</td><td>A person, and a team they belong to</td><td>alice, bob, admin · <code>/engineering</code> <code>/finance</code> <code>/finance/managers</code> <code>/admins</code></td></tr>
     <tr v-click><td class="strong">Realm &amp; client role</td><td>A permission label: realm roles are shared, client roles belong to one API. A composite role contains others</td><td>user, developer, admin · <code>reports-api</code>: viewer, editor (editor contains viewer)</td></tr>
     <tr v-click><td class="strong">Client scope</td><td>A named bundle of claims a client can request</td><td><code>groups</code> <code>app-audience</code> <code>reports</code></td></tr>
-    <tr v-click><td class="strong">Protocol mapper</td><td>Rule that writes a fact into the token</td><td>groups, roles, audience</td></tr>
   </tbody>
 </table>
 </div>
@@ -208,8 +203,6 @@ These are the Keycloak terms that I will use during the talk.
 
 [click] A client scope is a named set of claims that a client can request. When a client asks for the reports scope, the token gets reports-api in its audience.
 
-[click] A protocol mapper is a rule that writes a fact into the token.
-
 [click] Groups can also carry roles. alice gets the developer role from the engineering group, and bob gets the reports viewer role from the finance group.
 -->
 
@@ -222,7 +215,7 @@ These are the Keycloak terms that I will use during the talk.
 <div class="grid grid-cols-[1.25fr_1fr] gap-6 mt-4">
 <div class="grid grid-cols-2 gap-3">
   <div v-click="1" class="card"><h3>OIDC client</h3><p>Registered in Keycloak as the <code>oauth2-proxy</code> client, with a client secret.</p></div>
-  <div v-click="2" class="card"><h3>Session cookie</h3><p><code>_oauth2_proxy</code>, encrypted. Refreshed every 4 minutes, expires after 8 hours.</p></div>
+  <div v-click="2" class="card"><h3>Session cookie</h3><p><code>_oauth2_proxy</code>, encrypted. Refreshed on the first request after 4 minutes, expires after 8 hours.</p></div>
   <div v-click="3" class="card"><h3>External authorizer</h3><p>Istio asks it “is this request logged in?” It answers yes, or redirects to login.</p></div>
   <div v-click="4" class="card"><h3>Identity headers</h3><p>Returns X-Auth-Request-User, -Email and the access token, for Istio to copy into the request.</p></div>
 </div>
@@ -241,15 +234,15 @@ These are the Keycloak terms that I will use during the talk.
 </div>
 
 <!--
-OAuth2-Proxy turns a login into a session cookie, and it has four responsibilities.
+OAuth2-Proxy turns a login into a session cookie. It has four jobs.
 
-[click] First, it is an OpenID Connect client that is registered in Keycloak.
+[click] First, it is an OpenID Connect client, registered in Keycloak.
 
-[click] Second, it keeps the session in an encrypted cookie. It refreshes the tokens once the cookie is older than 4 minutes.
+[click] Second, it keeps the session in an encrypted cookie. When the cookie is older than 4 minutes, it refreshes the tokens on the next request.
 
-[click] Third, it is the external authorizer. Istio asks it whether a request is logged in, and it either says yes or redirects the user to the login page. It never forwards traffic itself.
+[click] Third, it is the external authorizer. For every browser request, Istio asks it: is this user logged in? It answers yes, or it sends the browser to the login page.
 
-[click] Fourth, it returns identity headers, including the access token, and Istio copies them into the request. This is the only way the token reaches the applications, so without these flags every browser request ends in a 403.
+[click] Fourth, it returns identity headers, including the access token, and Istio copies them into the request. That's how the applications learn who the user is.
 -->
 
 ---
@@ -307,7 +300,7 @@ Istio enforces everything with four kinds of resources.
   "azp": "oauth2-proxy",
   "preferred_username": "alice",
   "scope": "openid email groups",
-  "realm_access": { "roles": ["user"] },
+  "realm_access": { "roles": ["developer", "user"] },
   "groups": ["/engineering"],
   "exp": 1793000000
 }
@@ -324,20 +317,20 @@ Istio enforces everything with four kinds of resources.
 <!--
 A JWT has three parts: a header, a payload and a signature. This is a shortened version of alice's access token.
 
-[click] The iss, aud and azp claims tell us who issued the token, who it is for, and which client asked for it.
+[click] iss, aud and azp tell us who issued the token, who it is for, and which client asked for it.
 
 [click] The roles and groups are the claims that our access rules check.
 
-[click] The exp claim makes the token short-lived, and the signature means nobody can change it, because Istio verifies it with Keycloak's public keys.
+[click] exp makes the token short-lived. The signature means nobody can change it: Istio verifies it with Keycloak's public keys.
 
-[click] A login actually produces three tokens. The access token is used to call APIs, the ID token says who logged in, and the refresh token is used to get new tokens.
+[click] One login actually gives three tokens. The access token is for calling APIs, the ID token says who logged in, and the refresh token gets new tokens.
 -->
 
 ---
 
 <div class="kicker">Carrying identity</div>
 
-# Session cookies for people, bearer JWTs for machines
+# Session cookies for browsers, bearer JWTs for scripts
 
 <div class="grid grid-cols-[1fr_1fr] gap-5 mt-4">
   <div class="card !p-5" v-motion :initial="{ opacity: 0, y: 30 }" :enter="{ opacity: 1, y: 0 }">
@@ -373,13 +366,13 @@ A JWT has three parts: a header, a payload and a signature. This is a shortened 
 </div>
 
 <!--
-There are two ways to carry identity, and each one belongs to one access path.
+There are two ways to carry identity, one for each access path.
 
-People in a browser use a session cookie, which is encrypted and checked by OAuth2-Proxy. That is how app.localhost works.
+People in a browser get a session cookie. It's encrypted, and only OAuth2-Proxy can read it. That's app.localhost.
 
-Scripts send a bearer JWT in the Authorization header. Anyone can decode this token, but nobody can change it, and Istio verifies it. That is how api.localhost works.
+Scripts send a bearer token in the Authorization header. Anyone can decode it, but nobody can change it, and Istio verifies it. That's api.localhost.
 
-Three words are often confused, so let me separate them.
+Three words are often mixed up, so let me separate them.
 [click] A scope is what the client asked for.
 [click] A claim is a fact written in the token.
 [click] A role is what the user is allowed to do.
@@ -419,17 +412,29 @@ clicks: 13
 
 <!--
 [click] 1. Alice opens the application, and her browser has no cookie yet.
+
 [click] 2. The gateway asks OAuth2-Proxy whether this request is logged in, and there is no session.
+
 [click] 3. OAuth2-Proxy redirects the browser to Keycloak and sets a CSRF cookie.
+
 [click] 4. Keycloak shows its own login page, so our application never sees the password.
+
 [click] 5. Alice types her password. This is the only moment when she really authenticates.
-[click] 6. Keycloak sends the browser back with a one-time code. It does not send any tokens to the browser.
+
+[click] 6. Keycloak sends the browser back to OAuth2-Proxy with a one-time code.
+
 [click] 7. The code arrives at OAuth2-Proxy, which checks that the state value matches its CSRF cookie.
+
 [click] 8. OAuth2-Proxy then sends the code and its client secret directly to Keycloak, server to server.
-[click] 9. Keycloak answers with the access token, the ID token and the refresh token.
-[click] 10. OAuth2-Proxy seals the tokens into an encrypted cookie and redirects Alice back.
+
+[click] 9. Keycloak answers with the access token, the ID token and the refresh token, directly to OAuth2-Proxy, on the back channel.
+
+[click] 10. OAuth2-Proxy encrypts the tokens into a cookie and sends Alice back to her page.
+
 [click] 11. From now on, every request from Alice carries this cookie.
+
 [click] 12. OAuth2-Proxy decrypts the cookie and answers 200 with the identity headers, without calling Keycloak.
+
 [click] 13. The gateway removes the cookie and forwards the request with the identity headers, and Spring's sidecar checks the access token again.
 -->
 
@@ -477,18 +482,18 @@ clicks: 8
 <RefreshLoop />
 
 <!--
-Alice is now logged in, but her access token only lives 5 minutes, and her Keycloak session ends after 30 idle minutes. Yet she notices nothing while she keeps working. This is how that works.
+Alice's access token lives only 5 minutes, and her Keycloak session ends after 30 idle minutes. Still, she notices nothing while she keeps working. Here's why.
 
-[click] 1. Alice clicks something more than 4 minutes after the last refresh.
-[click] 2. OAuth2-Proxy checks the age of the cookie. If it is younger than 4 minutes, OAuth2-Proxy answers from the cookie alone, so a logout can take up to 4 minutes to take effect. Here it is older, so OAuth2-Proxy refreshes first.
-[click] 3. OAuth2-Proxy sends the refresh token to Keycloak on the back channel, so the browser never sees it.
-[click] 4. The session is still alive, so Keycloak resets the idle clock and returns fresh tokens.
-[click] 5. OAuth2-Proxy issues a new cookie and the request continues to the application, so Alice notices nothing.
+[click] 1. Alice clicks something, more than 4 minutes after the last refresh.
+[click] 2. OAuth2-Proxy sees that the cookie is older than 4 minutes, so it refreshes first.
+[click] 3. It sends the refresh token to Keycloak on the back channel. The browser never sees it.
+[click] 4. The session is still alive, so Keycloak returns fresh tokens and resets the idle timer.
+[click] 5. OAuth2-Proxy sets a new cookie, and the request continues. Alice notices nothing.
 
-Now let's look at the same request after 45 idle minutes.
-[click] 6. Keycloak ended the session after 30 idle minutes, so it refuses the refresh token with invalid_grant.
-[click] 7. OAuth2-Proxy deletes its cookie and redirects the browser to Keycloak.
-[click] 8. The Keycloak session is also gone, so Alice has to type her password again.
+Now the same request after 45 idle minutes.
+[click] 6. Keycloak ended the session after 30 idle minutes, so it refuses the refresh token.
+[click] 7. OAuth2-Proxy deletes its cookie and sends the browser to Keycloak.
+[click] 8. The Keycloak session is gone too, so Alice has to log in again.
 -->
 
 ---
@@ -520,13 +525,13 @@ class: navy
 </style>
 
 <!--
-Now let's look at our proof of concept, which has two access paths to the same applications.
+Now our POC. It has two ways in, to the same applications.
 
-[click] Browser access goes through app.localhost, for a person in a browser. The gateway asks OAuth2-Proxy through ext_authz, and OAuth2-Proxy recognizes the person by the session cookie.
+[click] Browser access, on app.localhost, is for people. The gateway asks OAuth2-Proxy, and OAuth2-Proxy recognizes the person by the session cookie.
 
-[click] API access goes through api.localhost, for a script that sends a bearer JWT. The gateway and the application's sidecar both validate the token, and the role claims decide what the caller may do.
+[click] API access, on api.localhost, is for scripts that send a bearer token. The gateway and the app's sidecar both check the token, and the roles in it decide what the caller may do.
 
-[click] Both paths lead to the same result: claims signed by Keycloak and checked by Istio before any application sees the request.
+[click] Both paths end the same way: claims signed by Keycloak, checked by Istio, before any application sees the request.
 -->
 
 ---
@@ -540,31 +545,31 @@ clicks: 12
 <EnvoyInside />
 
 <!--
-Istio does not run our rules itself. istiod turns each Istio resource into an Envoy filter, and the filters run in a fixed order. Let's follow alice's browser request to /api/headers through both proxies.
+Istio doesn't run our rules itself. Each Istio resource becomes a filter in Envoy, and the filters always run in the same order. Let's follow alice's browser request to /api/headers through both proxies.
 
-[click] 1. The first filter at the ingress gateway is ext_authz, configured by the AuthorizationPolicy with action CUSTOM. Envoy pauses the request and asks OAuth2-Proxy. OAuth2-Proxy checks the session cookie, answers 200, and adds the identity headers, including the access token.
+[click] 1. The first filter at the gateway is ext_authz. It comes from the AuthorizationPolicy with action CUSTOM. Envoy pauses the request and asks OAuth2-Proxy. OAuth2-Proxy checks the cookie, says yes, and adds the identity headers, including the access token.
 
-[click] 2. The next filter is jwt_authn, configured by RequestAuthentication. At the gateway it only looks at the Authorization header, and a browser request has none. A missing token is not an error, so the request continues without a principal.
+[click] 2. Next is jwt_authn, from RequestAuthentication. At the gateway it only looks at the Authorization header, and a browser doesn't send one. A missing token is not an error, so the request simply continues.
 
-[click] 3. Then the rbac filter, configured by the AuthorizationPolicy with action ALLOW. It has a rule for app.localhost, so the request may pass. The gateway does not check claims here, because the CUSTOM check has already authenticated the user.
+[click] 3. Then rbac, from the ALLOW policy. There's a rule for app.localhost, so the request may pass. OAuth2-Proxy has already checked the user.
 
-[click] 4. The router applies the VirtualService header rules, so the cookie is removed, and sends the request over mTLS to the Spring pod.
+[click] 4. The router applies the VirtualService. It removes the cookie and sends the request over mTLS to the Spring pod.
 
-[click] 5. Now we are in the sidecar. Its jwt_authn filter is configured by the RequestAuthentication called keycloak-jwt. It finds the token in the X-Auth-Request-Access-Token header, because that header is listed under fromHeaders.
+[click] 5. Now we're in Spring's sidecar. Its jwt_authn filter, from the RequestAuthentication keycloak-jwt, finds the token in the X-Auth-Request-Access-Token header.
 
-[click] 6. It decodes the token header and reads the key ID. It takes the key with the same ID from Keycloak's JWKS, which istiod fetched, and verifies the RS256 signature.
+[click] 6. It reads the key ID from the token header, takes the matching key from Keycloak's public keys, and checks the signature.
 
-[click] 7. Then it decodes the payload and checks the claims: the issuer must be our realm, the token must not be expired, and the audience must be spring-api.
+[click] 7. Then it reads the payload and checks the issuer, the expiry, and the audience: spring-api.
 
-[click] 8. The token is valid, so the filter stores the result for the next filter: the principal, which is the issuer and the subject, and all claims as request.auth.claims. This is the key point: RequestAuthentication decodes the token, and the AuthorizationPolicy only reads the result.
+[click] 8. The token is valid, so the filter stores the result for the next filter: who the user is, and all the claims. This is the key point: RequestAuthentication reads the token, and the AuthorizationPolicy only uses the result.
 
-[click] 9. The rbac filter now checks the ALLOW policy. The rule for /api/headers needs a principal, which we have, and a claim: realm_access.roles must contain developer. alice has it, so the request is allowed.
+[click] 9. Now rbac checks the ALLOW policy. /api/headers needs the role developer. alice has it, so the request is allowed.
 
-[click] 10. Spring receives the request with the identity headers and answers 200. Spring did not parse a token or check a role.
+[click] 10. Spring gets the request with the identity headers and answers 200. Spring never parsed a token or checked a role.
 
-[click] 11. Now the same request from bob. His token is valid and passes every filter until the last one. His roles are only user, so no ALLOW rule matches, and the sidecar answers 403 before Spring sees the request.
+[click] 11. Now the same request from bob. His token is valid, and he passes every filter until the last one. He doesn't have the developer role, so the sidecar answers 403, and Spring never sees the request.
 
-[click] 12. And this is how the setup grows. The gateway stays the same, and its router sends each path to its backend. Every backend runs in its own namespace with its own sidecar, and next to it sits one pair of resources: a RequestAuthentication that accepts only tokens for that backend's audience, and an AuthorizationPolicy that says which claims each endpoint needs. The reports API in FastAPI already works this way. To add x-api, in any language, we do four things: register a client with its roles and an audience scope in Keycloak, create a namespace with sidecar injection, add the two resources, and add a route. The new application contains no security code, and the next backend follows the same steps.
+[click] 12. And this is how it grows. Each backend gets its own namespace and sidecar, and one pair of resources: a RequestAuthentication for its audience, and an AuthorizationPolicy for its roles. The reports API already works this way. To add a new API, in any language, we do four things: add a client in Keycloak, create a namespace with sidecar injection, add the two resources, and add a route. The gateway and Keycloak stay the same, and the new app has no security code.
 -->
 
 ---
@@ -587,19 +592,19 @@ Istio does not run our rules itself. istiod turns each Istio resource into an En
 <p class="remember">Spring knows <b>who</b> alice is, but never sees her session, and nothing sensitive comes back to the browser.</p>
 
 <!--
-Now I will show browser access live. I use a private window, so the browser has no cookies from earlier. Before each step I will say what I expect, and then we check it.
+Now let's see browser access live. I'll use a private window, so there are no old cookies. For each step, I'll say what I expect first.
 
 **1 · No session: the login page**
 
 *Do: open a private window and go to app.localhost:8080/api/whoami.*
 
-The browser has no session cookie yet, so I expect the gateway to send me to Keycloak instead of to Spring.
+I have no session cookie yet, so I expect to land on Keycloak, not on Spring.
 
-*Result: the Keycloak page "Sign in to Demo".*
+*Result: Keycloak's "Sign in to Demo" page.*
 
-The gateway's CUSTOM policy asked OAuth2-Proxy whether this request is logged in. OAuth2-Proxy found no session and answered with a 302 to Keycloak. In the address bar you can see client_id=oauth2-proxy, and a redirect_uri that points back to /oauth2/callback. Spring has not been called at all.
+The gateway asked OAuth2-Proxy, OAuth2-Proxy found no session, and it sent me to Keycloak. Spring wasn't called at all. In the address bar you can see client_id=oauth2-proxy.
 
-**2 · Log in as alice: Spring knows who she is**
+**2 · Log in as alice**
 
 *Do: log in as alice, password alice.*
 
@@ -607,23 +612,23 @@ The password goes only to Keycloak. Our application never sees it.
 
 *Result: the JSON from /api/whoami.*
 
-The browser is back on /api/whoami, and this time Spring answers. xAuthRequestUser is alice's user ID in Keycloak, and xAuthRequestEmail is her email. Spring did not read a token or a cookie to get them: OAuth2-Proxy put them in identity headers at the gateway.
+Now Spring answers, with alice's user ID and email. Spring didn't read a token or a cookie: OAuth2-Proxy put them in headers at the gateway.
 
 *Do: open app.localhost:8080/api/headers.*
 
-This endpoint lists every header that Spring received, and alice may call it because she has the developer role. There is no cookie header: the gateway removed the session cookie after OAuth2-Proxy had checked it. There is an x-auth-request-access-token header, and Spring's sidecar validated that token and checked her role before the request arrived. So Spring knows who alice is, but it never sees her session.
+This page lists every header Spring received. There's no cookie: the gateway removed it. But the access token is there, and Spring's sidecar already checked it, including her developer role. So Spring knows who alice is, but never sees her session.
 
 **3 · Nothing sensitive goes back to the browser**
 
-*Do: open the developer tools on the Network tab, then go to app.localhost:8080/oauth2/auth and click the request to see its response headers.*
+*Do: open the developer tools on the Network tab, go to app.localhost:8080/oauth2/auth, and click the request.*
 
-This is OAuth2-Proxy's own check endpoint. It answers 202 when the session is valid. Without our route rule, it would also send the identity headers and the access token back to the browser.
+This is OAuth2-Proxy's own check endpoint. Without our route rule, it would send the identity headers and the access token back to the browser.
 
 *Result: 202, and no X-Auth-Request headers in the response.*
 
-A response rule on the /oauth2 route removes them. The only identity header left is GAP-Auth, OAuth2-Proxy's own header with alice's user ID, and that is not a secret.
+Our route removes them. If someone asks about GAP-Auth: that's only alice's user ID, not a secret.
 
-To sum up: the browser only holds an encrypted cookie, Spring gets the identity in headers, and the tokens stay inside the cluster.
+So: the browser holds only an encrypted cookie, Spring gets the identity in headers, and the tokens stay inside the cluster.
 -->
 
 ---
@@ -637,67 +642,33 @@ clicks: 10
 <EnvoyInside mode="api" />
 
 <!--
-Now the same view for API access. A script, in our demo plain curl, calls api.localhost with alice's access token in the Authorization header. There is no browser and no cookie. The script also sends its own X-Auth-Request-User header that claims to be admin. On the browser path OAuth2-Proxy sets that header, but here nobody does, so this one is fake: the script is trying to fool the application.
+Now the same view for API access. A script calls api.localhost with alice's token in the Authorization header. No browser, no cookie. The script also adds an X-Auth-Request-User header that says admin. Nobody sets that header on this path, so it's fake: the script is trying to fool the application.
 
-[click] 1. The first filter is ext_authz again. But the CUSTOM policy only matches app.localhost, so Envoy skips it and OAuth2-Proxy is not called. OAuth2-Proxy is for browsers; an API client brings its own token.
+[click] 1. ext_authz first. The CUSTOM policy only matches app.localhost, so OAuth2-Proxy isn't called. An API client brings its own token.
 
-[click] 2. Now jwt_authn at the gateway has real work to do. The RequestAuthentication demo-jwt-validation finds the bearer token, takes the key with the same key ID from Keycloak's JWKS, and verifies the signature. It checks the issuer and the expiry, but not the audience. The result is the principal: the issuer and the subject of the token.
+[click] 2. Now jwt_authn at the gateway has real work. It finds the bearer token and checks the signature, the issuer and the expiry, but not the audience. The result is a principal: who the token belongs to.
 
-[click] 3. rbac at the gateway. For api.localhost, the ALLOW rule needs a principal, which means any valid token. It does not look at roles yet. So the gateway answers the question: is there a valid token from our Keycloak?
+[click] 3. rbac at the gateway. For api.localhost, the rule needs a principal, so any valid token is enough. Roles come later.
 
-[click] 4. The router. api.localhost has no ext_authz, so an X-Auth-Request header can only come from the client. The VirtualService removes all of them, so our fake admin header is gone before it reaches Spring. The Authorization header stays. We will try exactly this in check 5 of the demo.
+[click] 4. The router removes every X-Auth-Request header, because on this path they can only come from the client. Our fake admin header is gone. We'll try this live in the demo.
 
-[click] 5. In the Spring sidecar, the RequestAuthentication keycloak-jwt reads the same token from the Authorization header and verifies it again. This time it also checks the audience: the token must be issued for spring-api. Then it stores the claims for the next filter.
+[click] 5. In Spring's sidecar, keycloak-jwt checks the same token again, and this time also the audience: it must be issued for spring-api.
 
-[click] 6. rbac at the sidecar. The rule for /api/user needs the realm role user, and alice has it.
+[click] 6. rbac at the sidecar. /api/user needs the role user, and alice has it.
 
-[click] 7. Spring receives the request and answers 200. It did not verify the token, and it never saw the fake header.
+[click] 7. Spring answers 200. It never checked the token, and it never saw the fake header.
 
 Now three requests that fail, each at a different filter.
 
-[click] 8. No token at all. RequestAuthentication lets the request pass, because a missing token is not a bad token. But there is no principal, so the gateway's ALLOW rule does not match: 403 at the gateway. This is why RequestAuthentication and AuthorizationPolicy always come as a pair.
+[click] 8. No token at all. RequestAuthentication lets it pass, because there's nothing to check. But there's no principal, so the gateway's rule doesn't match: 403. That's why we always use the two resources together.
 
-[click] 9. A tampered token: I change one character. The signature no longer matches, so the gateway's jwt_authn answers 401, and no AuthorizationPolicy is reached.
+[click] 9. A tampered token, with one character changed. The signature check fails, so the gateway answers 401.
 
-[click] 10. alice calls /api/admin. Her token is valid, so the gateway lets the request in. The role check happens next to the API: alice has no admin role, so the Spring sidecar answers 403.
+[click] 10. alice calls /api/admin. Her token is valid, so the gateway lets her in. But she has no admin role, so the Spring sidecar answers 403.
 
-So the gateway asks whether there is a valid token, and the sidecar asks whether this token is meant for this API and has the right role. We will see all of this live in the demo.
+In short: the gateway checks that there's a valid token. The sidecar checks that the token is meant for this API and has the right role.
 -->
 
----
-
-<div class="kicker">API access · api.localhost · Spring Boot and FastAPI</div>
-
-# Claims in the token decide every endpoint
-
-<div class="tbl-card mt-2">
-<table class="tbl text-center">
-  <thead><tr><th class="!text-left">Endpoint</th><th class="!text-left">Claim it needs</th><th>alice<br><span class="normal-case">user · developer</span></th><th>bob<br><span class="normal-case">user · reports viewer</span></th><th>admin<br><span class="normal-case">user · admin</span></th></tr></thead>
-  <tbody>
-    <tr v-click><td class="strong !text-left">/api/public</td><td class="!text-left muted">nothing</td><td class="code-200">200</td><td class="code-200">200</td><td class="code-200">200</td></tr>
-    <tr v-click><td class="strong !text-left">/api/user</td><td class="!text-left muted">realm role user</td><td class="code-200">200</td><td class="code-200">200</td><td class="code-200">200</td></tr>
-    <tr v-click><td class="strong !text-left">/api/headers</td><td class="!text-left muted">realm role developer</td><td class="code-200">200</td><td class="code-403">403</td><td class="code-403">403</td></tr>
-    <tr v-click><td class="strong !text-left">/api/admin</td><td class="!text-left muted">realm role admin</td><td class="code-403">403</td><td class="code-403">403</td><td class="code-200">200</td></tr>
-    <tr v-click><td class="strong !text-left">GET /reports</td><td class="!text-left muted"><code>reports-api</code> role viewer</td><td class="code-403">403</td><td class="code-200">200</td><td class="code-403">403</td></tr>
-    <tr v-click><td class="strong !text-left">POST /reports</td><td class="!text-left muted"><code>reports-api</code> role editor</td><td class="code-403">403</td><td class="code-403">403</td><td class="code-403">403</td></tr>
-  </tbody>
-</table>
-</div>
-
-<p v-click class="remember text-sm">/reports also needs <code>aud: reports-api</code>, which the token only gets when the client asks for <code>scope=reports</code>. Without it: <span class="code-403">403</span> <span class="mono">Audiences in Jwt are not allowed</span>, even for bob.</p>
-
-<!--
-Every endpoint asks for a claim in the token. The Spring endpoints check realm roles, and the reports API checks its own client roles. These are two applications in two languages, and neither contains any security code: the same Istio resources protect both.
-
-[click] /api/public needs no claim, so everyone gets a 200.
-[click] /api/user needs the realm role user, and all three users have it.
-[click] /api/headers needs the realm role developer, so only alice gets a 200. She has this role through her engineering group.
-[click] /api/admin needs the realm role admin, so only the admin user gets a 200.
-[click] Reading reports needs the viewer role of reports-api. Only bob gets a 200, through his finance group. alice is a developer, but that realm role means nothing to the reports API.
-[click] Creating a report needs the editor role, and nobody has it yet. We will change that in the demo.
-
-[click] The reports API also checks the audience. A token only contains reports-api in its audience when the client asks for the reports scope. Without it, the reports sidecar rejects the token with a 403, even for bob. The audience check stops a token issued for one API from being replayed against another, even when the token is valid and the user has the right roles.
--->
 
 ---
 
@@ -730,7 +701,7 @@ Every endpoint asks for a claim in the token. The Spring endpoints check realm r
 </style>
 
 <!--
-Now API access, in the terminal. For each check, the script shows a short explanation, the policy snippet and the curl command, and then it waits. I say what I expect, press Enter, and the real answer from the cluster appears. Then I press Enter again for the next check.
+Now API access, in the terminal. For each check, the script shows the rule and the curl command, and then waits. I say what I expect, press Enter, and we see the real answer.
 
 *Do: run make demo-api.*
 
@@ -738,97 +709,95 @@ Now API access, in the terminal. For each check, the script shows a short explan
 
 *On screen: the ALLOW rule for GET /api/public.*
 
-This rule has no from block, so it does not ask for a principal, and anyone matches it. I expect a 200.
+This rule doesn't ask for a token, so I expect 200.
 
 *Enter. Result: 200.*
 
-Public endpoints are declared in the policy, not in the application.
+Public endpoints are declared in the policy, not in the code.
 
 **2 · Protected endpoint, no token**
 
-*On screen: the ALLOW rule with requestPrincipals ["*"].*
+*On screen: the rule with requestPrincipals ["*"].*
 
-Now /api/user, again without a token. RequestAuthentication has nothing to check, so it lets the request continue. But this rule needs requestPrincipals star, which means any verified token. A principal is the issuer and the subject of a verified token, so without a token there is no principal, and no rule matches. I expect a 403.
+/api/user needs a principal, which means a valid token. I send none, so I expect 403.
 
 *Enter. Result: 403, RBAC: access denied.*
 
-This is why we always pair the two resources: RequestAuthentication checks tokens, but only the AuthorizationPolicy requires one.
+RequestAuthentication checks tokens, but only the AuthorizationPolicy requires one.
 
 **3 · Tampered token**
 
-*On screen: RequestAuthentication demo-jwt-validation, with the issuer and the jwksUri.*
+*On screen: RequestAuthentication demo-jwt-validation.*
 
-I take a real token for alice and add one character at the end, so the signature no longer matches. The gateway verifies the signature with Keycloak's public keys from the jwksUri. I expect a 401.
+I take alice's real token and add one character. The signature breaks, so I expect 401.
 
 *Enter. Result: 401, Jwt verification fails.*
 
-A token that is present but invalid is rejected before any policy runs. A 401 means: I don't know who you are.
+A 401 means: I don't know who you are.
 
 **4 · alice: user yes, admin no**
 
-*On screen: alice's principal, her claims with the realm roles user and developer, and the Spring ALLOW rules.*
+*On screen: alice's roles, user and developer, and the Spring rules.*
 
-Now alice's real token. The script shows her principal, which is the issuer and her subject, and her realm roles, user and developer. At the Spring sidecar, every rule needs the principal and a role in the token. First /api/user, which needs the role user. I expect a 200.
+/api/user needs the role user. I expect 200.
 
 *Enter. Result: 200.*
 
-Next /api/admin, which needs the role admin. Her token is valid, but she does not have that role. I expect a 403.
+/api/admin needs admin, which she doesn't have. I expect 403.
 
 *Enter. Result: 403, RBAC: access denied.*
 
-The token is fine, but the claim is missing. A 403 means: I know who you are, and the answer is no.
+A 403 means: I know who you are, and the answer is no.
 
 **5 · A fake identity header**
 
-*On screen: the VirtualService api, with the list of X-Auth-Request headers it removes.*
+*On screen: the list of X-Auth-Request headers that the route removes.*
 
-In the browser demo, Spring got alice's identity from X-Auth-Request headers that OAuth2-Proxy added. What if a script simply sends such a header itself? alice now sends X-Auth-Request-User: admin to /api/headers, which lists every header that Spring receives. On api.localhost there is no ext_authz, so this header can only come from the client, and the VirtualService removes it. I expect a 200, and no X-Auth-Request header at Spring.
+In the browser demo, Spring learned who alice was from X-Auth-Request headers. What if a script just sends one itself? alice sends X-Auth-Request-User: admin. I expect 200, and no such header at Spring.
 
-*Enter. Result: 200, and "X-Auth-Request headers that Spring received: none".*
+*Enter. Result: 200, "X-Auth-Request headers that Spring received: none".*
 
-Spring can trust these headers because only OAuth2-Proxy can set them: anything a client sends is removed at the gateway. This is click 4 of the Inside Envoy slide for API access, live.
+The gateway removed it. That's why Spring can trust these headers: only OAuth2-Proxy can set them.
 
 **6 · bob without the reports scope**
 
-*On screen: bob's claims, with aud only spring-api, and the reports RequestAuthentication with audiences reports-api.*
+*On screen: bob's token, with aud only spring-api.*
 
-bob is in the finance group, so he has the viewer role of the reports API. But this token was requested without the reports scope, so its audience is only spring-api. The reports sidecar only accepts tokens that were issued for reports-api. I expect a 403 with the message "Audiences in Jwt are not allowed".
+bob has the reports viewer role, but this token wasn't issued for the reports API. I expect 403.
 
 *Enter. Result: 403, Audiences in Jwt are not allowed.*
 
-The token is correctly signed and bob has the right role, but the token was not issued for this API. The audience check stops a token for one API from being used against another.
+Right user, right role, wrong audience.
 
 **7 · bob with the reports scope**
 
-*On screen: the new token, with reports-api in aud and viewer in the reports-api roles, and the reports ALLOW rules.*
+*On screen: the new token, with reports-api in aud and the viewer role.*
 
-Same user, but a new token, requested with scope=reports. Now the audience contains reports-api, and the token carries bob's client role viewer. Reading reports needs viewer, so I expect a 200.
+Same user, new token, with scope=reports. Reading needs viewer, so I expect 200.
 
 *Enter. Result: 200 and the list of reports.*
 
-Creating a report needs the editor role, and bob is only a viewer. I expect a 403.
+Creating needs editor, and bob is only a viewer. I expect 403.
 
 *Enter. Result: 403, RBAC: access denied.*
 
-The reports API is written in Python with FastAPI, and it has no security code at all. The same Istio resources protect the Java app and the Python app.
+The reports API is Python, and it has no security code. The same Istio resources protect both apps.
 
 **8 · Add bob to the managers group**
 
-*On screen: the admin console path, and the admin API call.*
+*On screen: the admin console path and the admin API call.*
 
-In Keycloak's admin console, I would open Users, then bob, then Groups, and join finance managers. The script does the same through the Keycloak admin API.
+In the admin console I'd open Users, then bob, then Groups, and join finance managers. The script does the same through the admin API.
 
-*Enter: bob joins /finance/managers, and the script gets a new token.*
+*Enter: bob joins the group, and the script gets a new token.*
 
-The new token now has editor in bob's reports-api roles, because the managers group gives editor. The user is the same and the policy is the same. I expect the POST to give a 201 now.
+The new token now has the editor role. I expect 201.
 
 *Enter. Result: 201 Created.*
 
-Nothing changed in the code, in the policy, or in the deployment. Only a group membership in Keycloak changed, and the claim in the token did the rest.
+No code, no policy, no deployment changed. Only a group in Keycloak, and the claim in the token did the rest.
 
-*Enter for the summary.*
-
-The script removes bob from the group again, so the demo can be repeated, and all ten checks behaved as expected.
+*Enter for the summary: the script removes bob from the group again, and all ten checks passed.*
 -->
 
 ---
@@ -844,12 +813,12 @@ The script removes bob from the group again, so the demo can be repeated, and al
     <tr v-click><td class="faint">1</td><td class="strong">User AuthN</td><td>Who is the user?</td><td>Keycloak (+ OAuth2-Proxy)</td></tr>
     <tr v-click><td class="faint">2</td><td class="strong">Token check</td><td>Is the token real and meant for us?</td><td>RequestAuthentication</td></tr>
     <tr v-click><td class="faint">3</td><td class="strong">User AuthZ</td><td>Do the token’s claims allow this path?</td><td>AuthorizationPolicy</td></tr>
-    <tr v-click><td class="faint">4</td><td class="strong">Business AuthZ</td><td>Is this action allowed today?</td><td class="font-bold text-[var(--orange)]">The application (Spring Boot, FastAPI)</td></tr>
+    <tr v-click><td class="faint">4</td><td class="strong">Business AuthZ</td><td>May alice edit <i>this</i> report?</td><td class="font-bold text-[var(--orange)]">The application (Spring Boot, FastAPI)</td></tr>
   </tbody>
 </table>
 </div>
 
-<p v-click class="remember">The platform answers 1 to 3. <b>The application only owns row 4:</b> real business rules.</p>
+<p v-click class="remember">The platform answers 1 to 3. <b>The application owns row 4:</b> rules that need its own data.</p>
 
 <!--
 To put it all together, there are four questions, and each one is answered by one layer.
@@ -857,9 +826,9 @@ To put it all together, there are four questions, and each one is answered by on
 [click] Who is the user? Keycloak answers this, with help from OAuth2-Proxy for browsers.
 [click] Is the token real and meant for us? RequestAuthentication answers this.
 [click] Do the token's claims allow this path? AuthorizationPolicy answers this.
-[click] Is this action allowed today? This is a business rule, so the application answers it, in Spring Boot or FastAPI.
+[click] May alice edit this report? Istio only sees the request and the token. It doesn't know who owns report 42, so the application answers this one, with its own data.
 
-[click] The platform answers the first three questions, and the application only owns the business rules.
+[click] The platform answers the first three questions. The application keeps only the rules that need its data, like ownership or amount limits.
 -->
 
 ---
@@ -875,7 +844,7 @@ class: navy
       { t: 'AuthN, then AuthZ', d: '401 = who are you? 403 = I know you, and no.' },
       { t: 'One job per component', d: 'Keycloak authenticates, OAuth2-Proxy keeps the session, Istio enforces.' },
       { t: 'Always pair them', d: 'RequestAuthentication alone lets no-token requests through.' },
-      { t: 'Claims, not code', d: 'Roles in the token decide access, checked at the gateway and again at the pod.' },
+      { t: 'Claims, not code', d: 'Roles in the token decide access: the gateway checks the token, the sidecar checks the claims.' },
     ]" :key="t.t" class="card !p-5"
     v-motion :initial="{ opacity: 0, scale: 0.9 }" :enter="{ opacity: 1, scale: 1, transition: { delay: 100 + i * 150 } }">
     <h3 class="!text-lg">{{ t.t }}</h3>
@@ -883,26 +852,26 @@ class: navy
   </div>
 </div>
 
-<p class="mt-5 text-lg text-white">Security is out of the application: the platform decides <b>who</b> and <b>what</b>, the app keeps its business rules.</p>
+<p class="mt-5 text-lg text-white">Security is out of the application: the platform decides <b>who</b> you are and <b>which endpoints</b> you may call, and the app keeps the rules that need its data.</p>
 
 <div class="mt-5 flex items-end justify-between">
   <div class="text-4xl font-bold text-white" v-click>Questions?</div>
 </div>
 
 <!--
-Here are four things to remember from this talk.
+Here are four things to remember.
 
-A 401 means we do not know who you are, and a 403 means we know you but the answer is no.
+A 401 means we don't know who you are. A 403 means we know you, and the answer is no.
 
-Keycloak authenticates the user, OAuth2-Proxy keeps the browser session, and Istio enforces the policies.
+Keycloak authenticates, OAuth2-Proxy keeps the browser session, and Istio enforces the policies.
 
-Always pair RequestAuthentication with an AuthorizationPolicy, because otherwise requests with no token get through.
+Always pair RequestAuthentication with an AuthorizationPolicy. Otherwise, requests without a token get through.
 
-Roles in the token decide access, so we can change access without changing code. We saw it with two applications in two languages, and neither contains a single line of security code.
+And claims, not code: the gateway checks the token, and the sidecar checks the claims. We changed bob's access without touching any code, in two apps written in two languages.
 
-And that brings us back to where we started: security is out of the application. The platform decides who you are and what you may do, and the application keeps only its business rules.
+So we're back where we started: security is out of the application. The platform decides who you are and which endpoints you may call, and the app keeps only the rules that need its own data.
 
-[click] That is all from me. Do you have any questions?
+[click] That's all from me. Any questions?
 -->
 
 ---
@@ -917,6 +886,41 @@ class: navy
 
 <!--
 These are backup slides. I only show them if someone asks about one of these topics: the exact order of checks inside Envoy, where six different requests stop, the browser access policy, the sensitive headers, how long a login lasts, where the session cookie goes, how audiences and scopes work, the issues we found while building the POC, what logout ends, what happens when Keycloak is down, whether headers can be faked, how to debug a 401 or 403, or whether authorization belongs in the mesh or the app.
+-->
+
+---
+
+<div class="kicker">Backup · API access · every endpoint and its claim</div>
+
+# Claims in the token decide every endpoint
+
+<div class="tbl-card mt-2">
+<table class="tbl text-center">
+  <thead><tr><th class="!text-left">Endpoint</th><th class="!text-left">Claim it needs</th><th>alice<br><span class="normal-case">user · developer</span></th><th>bob<br><span class="normal-case">user · reports viewer</span></th><th>admin<br><span class="normal-case">user · admin</span></th></tr></thead>
+  <tbody>
+    <tr v-click><td class="strong !text-left">/api/public</td><td class="!text-left muted">nothing</td><td class="code-200">200</td><td class="code-200">200</td><td class="code-200">200</td></tr>
+    <tr v-click><td class="strong !text-left">/api/user</td><td class="!text-left muted">realm role user</td><td class="code-200">200</td><td class="code-200">200</td><td class="code-200">200</td></tr>
+    <tr v-click><td class="strong !text-left">/api/headers</td><td class="!text-left muted">realm role developer</td><td class="code-200">200</td><td class="code-403">403</td><td class="code-403">403</td></tr>
+    <tr v-click><td class="strong !text-left">/api/admin</td><td class="!text-left muted">realm role admin</td><td class="code-403">403</td><td class="code-403">403</td><td class="code-200">200</td></tr>
+    <tr v-click><td class="strong !text-left">GET /reports</td><td class="!text-left muted"><code>reports-api</code> role viewer</td><td class="code-403">403</td><td class="code-200">200</td><td class="code-403">403</td></tr>
+    <tr v-click><td class="strong !text-left">POST /reports</td><td class="!text-left muted"><code>reports-api</code> role editor</td><td class="code-403">403</td><td class="code-403">403</td><td class="code-403">403</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p v-click class="remember text-sm">/reports also needs <code>aud: reports-api</code>, which the token only gets when the client asks for <code>scope=reports</code>. Without it: <span class="code-403">403</span> <span class="mono">Audiences in Jwt are not allowed</span>, even for bob.</p>
+
+<!--
+Every endpoint asks for a claim in the token. Spring checks realm roles, and the reports API checks its own client roles. Two apps, two languages, and no security code in either.
+
+[click] /api/public needs nothing, so everyone gets 200.
+[click] /api/user needs the role user, and all three users have it.
+[click] /api/headers needs developer, so only alice gets in. She gets that role from her engineering group.
+[click] /api/admin needs admin, so only the admin user gets in.
+[click] Reading reports needs the reports viewer role. Only bob has it, from his finance group.
+[click] Creating a report needs editor, and nobody has it, until bob joins the managers group, as we saw in the demo.
+
+[click] The reports API also checks the audience. A token only has reports-api in its audience if the client asks for the reports scope. Without it, even bob gets a 403. This stops a token made for one API from being used against another.
 -->
 
 ---

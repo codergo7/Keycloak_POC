@@ -70,7 +70,7 @@ const steps: Step[] = [
   {
     from: 3, to: 0, kind: 'front', label: '6 · 302 /oauth2/callback?code=…',
     title: 'Keycloak hands back a one-time code',
-    text: 'No tokens go to the browser. Only a short code, usable once and for about a minute, plus the same state.',
+    text: 'Keycloak sends the browser back to OAuth2-Proxy with a short code, usable once and for about a minute, plus the same state.',
     code: 'HTTP/1.1 302 Found\nLocation: app.localhost:8080\n  /oauth2/callback\n  ?code=9f3e…c71\n  &state=a1b2c3',
     chips: ['authorization code', 'one-time', 'state echoed'],
   },
@@ -91,7 +91,7 @@ const steps: Step[] = [
   {
     from: 3, to: 2, kind: 'back', label: '9 · tokens (JWTs)',
     title: '…tokens out',
-    text: 'Keycloak returns signed JWTs. Their audience includes spring-api thanks to the app-audience client scope.',
+    text: 'Keycloak returns signed JWTs, directly to OAuth2-Proxy. Their audience includes spring-api thanks to the app-audience client scope.',
     code: '{\n  "access_token":  "eyJhbGciOi…",\n  "id_token":      "eyJhbGciOi…",\n  "refresh_token": "eyJhbGciOi…",\n  "expires_in": 300\n}',
     chips: ['JWT', 'aud: spring-api'],
   },

@@ -60,7 +60,7 @@ function verdict(i: number, f: Filter) {
 }
 
 const user = computed(() => (bob.value ? 'bob' : 'alice'))
-const sub = computed(() => (bob.value ? 'b774…' : '44554fc9…'))
+const sub = computed(() => (bob.value ? 'bfa3d087…' : '170b145d…'))
 const roles = computed(() => (bob.value ? ['user'] : ['developer', 'user']))
 
 const headers = computed(() => api.value ? apiHeaders.value : [
@@ -518,8 +518,8 @@ const appOff = computed(() => (api.value ? apiFail.value : bob.value))
               <span class="seg h">eyJhbGciOiJSUzI1NiIs…</span><span class="dot">.</span><span class="seg p">eyJleHAiOjE3OTQz…</span><span class="dot">.</span><span class="seg sig">QtWjd_fIzyiPmkBe…</span>
             </div>
             <div v-if="s >= 6" class="part h">
-              <span class="tag">header</span> alg: RS256 · kid: hNUlgCrX…
-              <div class="match">kid = JWKS key hNUlgCrX… → <b>signature ✓</b></div>
+              <span class="tag">header</span> alg: RS256 · kid: UHlGaDFC…
+              <div class="match">kid = JWKS key UHlGaDFC… → <b>signature ✓</b></div>
             </div>
             <div v-if="s >= 7" class="part p">
               <span class="tag">payload</span>
@@ -530,7 +530,7 @@ const appOff = computed(() => (api.value ? apiFail.value : bob.value))
             </div>
             <div v-if="s >= 8" class="part out">
               <span class="tag">stored for rbac</span>
-              <div class="claim"><span>principal</span> …/realms/demo/44554fc9…</div>
+              <div class="claim"><span>principal</span> …/realms/demo/170b145d…</div>
               <div class="claim"><span>request.auth.claims</span> the payload above</div>
             </div>
           </div>

@@ -126,7 +126,7 @@ preflight() {
   code="$(curl -s -o /dev/null -w '%{http_code}' "$API/api/public")"
   if [[ "$code" != 200 ]]; then
     echo "${RED}${B}The cluster is not answering (GET /api/public → $code).${R}"
-    echo "If the laptop slept, the mesh certificates expired: restart the pods (see the debugging backup slide)."
+    echo "If the laptop slept, the mesh certificates expired: run make status, then restart the pods."
     exit 1
   fi
 }
