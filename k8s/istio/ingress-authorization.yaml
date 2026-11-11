@@ -39,15 +39,10 @@ spec:
               - /oauth2/*
               - /api/public
               - /actuator/health
-
-      when:
-        - key: request.headers[Authorization]
-          notValues:
-            - "Bearer *"
-
-        - key: request.headers[User-Agent]
-          values:
-            - "Mozilla/*"
+      # No exceptions for Bearer tokens or non-browser user agents: app.localhost is
+      # browser-only, so OAuth2-Proxy always sets the identity headers. With exceptions,
+      # a caller with any valid token could send its own X-Auth-Request-User to Spring.
+      # Scripts use api.localhost.
 
 ---
 

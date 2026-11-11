@@ -105,7 +105,7 @@ The full decision sequence at the gateway:
                              [3]  │ CUSTOM policy rules match?        │
                                   │ (host app.localhost, path not     │
                                   │  /oauth2/* /api/public /actuator/ │
-                                  │  health, no "Bearer", UA Mozilla) │
+                                  │  health)                          │
                                   └──────────────────────────────────┘
                                      │ no                   │ yes
                                      │                      ▼
@@ -293,12 +293,13 @@ Rule logic of this policy:
 ```
 ask oauth2-proxy  ⇔  host ∈ {app.localhost, app.localhost:*}
                  AND path ∉ {/oauth2/*, /api/public, /actuator/health}
-                 AND Authorization header does NOT start with "Bearer "
-                 AND User-Agent starts with "Mozilla/"
 ```
 
-So only real browser requests to the app are sent to oauth2-proxy. API clients
-with a bearer token, and non-browser clients such as curl, skip it.
+There are no exceptions for bearer tokens or user agents: app.localhost is
+browser-only, and every request to it is sent to oauth2-proxy. Scripts use
+api.localhost. (An earlier version skipped requests with a bearer token or a
+non-browser user agent. A caller with any valid token could then send its own
+`X-Auth-Request-User` to Spring, because oauth2-proxy never overwrote it.)
 
 The ext_authz call (settings from the mesh config in `istio-cm.yaml`):
 
@@ -444,7 +445,7 @@ it back. The gateway passes it to oauth2-proxy and removes it before Spring.
 ### 6.1 Browser, first visit (no session)
 
 ```
-Browser ── GET app.localhost/api/whoami (no cookie, UA Mozilla) ──► Gateway
+Browser ── GET app.localhost/api/whoami (no cookie) ──► Gateway
   [2] route: app.localhost "/" → spring-app
   [3] CUSTOM rules match
   [4] ext_authz → oauth2-proxy: no session → 302 to Keycloak
@@ -533,9 +534,11 @@ The access log shows which proxy answered and why, in `details=`. Examples:
   20 minutes. Every JWT then fails with `Jwt verification fails`. Fix:
   `kubectl -n istio-system rollout restart deploy/istiod`. The Makefile does
   this after Keycloak is ready.
-- **CUSTOM only triggers for browsers.** Because of the `User-Agent: Mozilla/*`
-  condition, `curl app.localhost/` without `-A 'Mozilla/5.0'` skips oauth2-proxy
-  and gets 403 from the Spring sidecar.
+- **Exceptions in the CUSTOM policy opened a spoofing gap.** The policy used to
+  skip requests with a bearer token or a non-browser user agent. Then nothing
+  overwrote a client-sent `X-Auth-Request-User`, and Spring trusted it. Fix:
+  no exceptions on app.localhost, and the sidecars write `x-auth-request-user`
+  and `x-auth-request-email` from the verified token (`outputClaimToHeaders`).
 - **VirtualService header rules are per route.** A rule on the Spring route
   does nothing for `/oauth2/*` responses, and the reverse is also true.
 - **VirtualService can only remove a whole header.** `remove: [cookie]` drops

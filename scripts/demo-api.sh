@@ -92,7 +92,7 @@ PY
 snippet() {
   echo "  ${DIM}┌ $1 · $2${R}"
   while IFS= read -r line; do
-    if [[ "$line" =~ requestPrincipals|audiences|request\.auth\.claims|values:|issuer:|jwksUri:|-\ (spring|reports)-api$|x-auth-request-user$ ]]; then
+    if [[ "$line" =~ requestPrincipals|audiences|request\.auth\.claims|values:|issuer:|jwksUri:|-\ (spring|reports)-api$|outputClaimToHeaders|claim:\ sub$ ]]; then
       echo "  ${DIM}│${R} ${MAGENTA}${B}${line}${R}"
     else
       echo "  ${DIM}│${R} ${BLUE}${line}${R}"
@@ -126,7 +126,7 @@ preflight() {
   code="$(curl -s -o /dev/null -w '%{http_code}' "$API/api/public")"
   if [[ "$code" != 200 ]]; then
     echo "${RED}${B}The cluster is not answering (GET /api/public → $code).${R}"
-    echo "If the laptop slept, the mesh certificates expired: run make status, then restart the pods."
+    echo "If the laptop slept, the mesh certificates expired: run make wake."
     exit 1
   fi
 }
@@ -233,23 +233,23 @@ expect 403 "valid token, but no admin role" "RBAC: access denied"
 
 # ---------------------------------------------------------------------------
 step "5. A fake identity header" \
-  "Browser requests get ${B}X-Auth-Request-User${R} from OAuth2-Proxy. On api.localhost there is ${B}no ext_authz${R}," \
-  "so such a header can only come from the client. alice sends ${B}X-Auth-Request-User: admin${R}" \
-  "to /api/headers, which lists every header that Spring receives."
-snippet k8s/app/app.yaml "VirtualService api (route to Spring)" <<'YAML'
-hosts: [api.localhost]
-http:
-  - route:
-      - destination: { host: spring-app.spring-api.svc.cluster.local }
-    headers:
-      request:
-        remove:
-          - x-auth-request-user
-          - x-auth-request-email
-          - x-auth-request-groups
-          - x-auth-request-preferred-username
-          - x-auth-request-access-token
+  "Spring reads ${B}X-Auth-Request-User${R} to know who the caller is. What if a script sends its own?" \
+  "alice sends ${B}X-Auth-Request-User: admin${R} to /api/headers, which lists every header Spring receives." \
+  "The gateway route removes it, and Spring's sidecar writes the real value ${B}from the verified token${R}."
+snippet k8s/app/auth-app.yaml "RequestAuthentication keycloak-jwt" <<'YAML'
+jwtRules:
+  - issuer: http://keycloak.localhost:8080/realms/demo
+    audiences:
+      - spring-api
+    outputClaimToHeaders:
+      - header: x-auth-request-user
+        claim: sub
+      - header: x-auth-request-email
+        claim: email
 YAML
+ALICE_SUB="$(python3 -c 'import base64,json,sys
+p = sys.argv[1].split(".")[1]
+print(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)))["sub"])' "$ALICE")"
 show_cmd "curl -H \"Authorization: Bearer \$ALICE\" -H 'X-Auth-Request-User: admin' $API/api/headers"
 pause
 run -H "Authorization: Bearer $ALICE" -H 'X-Auth-Request-User: admin' "$API/api/headers"
@@ -257,13 +257,13 @@ SEEN="$(printf '%s' "$BODY" | python3 -c 'import json,sys
 try: h = json.load(sys.stdin)
 except Exception: print("unreadable response"); sys.exit()
 h = h.get("headers", h) if isinstance(h, dict) else {}
-print(", ".join(f"{k}: {v}" for k, v in h.items() if k.lower().startswith("x-auth-request")) or "none")')"
-echo "  → HTTP $(color_code "$CODE")  X-Auth-Request headers that Spring received: ${B}${SEEN:-none}${R}"
-if [[ "$CODE" == 200 && "${SEEN:-none}" == none ]]; then
-  echo "  ${GREEN}✔ expected 200, without the fake header${R}  the gateway removed it before Spring could trust it"
+print(h.get("x-auth-request-user", "none"))')"
+echo "  → HTTP $(color_code "$CODE")  X-Auth-Request-User at Spring: ${B}${SEEN:-none}${R}  (alice's user ID: $ALICE_SUB)"
+if [[ "$CODE" == 200 && "$SEEN" == "$ALICE_SUB" ]]; then
+  echo "  ${GREEN}✔ expected 200, with alice's real ID instead of admin${R}  the identity comes from the token, not from the client"
   PASSED=$((PASSED + 1))
 else
-  echo "  ${RED}✘ expected 200 without X-Auth-Request headers, got $CODE ($SEEN)${R}"
+  echo "  ${RED}✘ expected 200 with X-Auth-Request-User = $ALICE_SUB, got $CODE ($SEEN)${R}"
   FAILED=$((FAILED + 1))
 fi
 

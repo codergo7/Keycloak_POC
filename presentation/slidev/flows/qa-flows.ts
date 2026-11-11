@@ -1,6 +1,7 @@
 // Data for the backup Q&A sequence diagrams (components/QaFlow.vue).
-// Every result below was measured on the running cluster; the logout "fix"
-// options in the last step are not set up in the POC.
+// logout: every result was measured on the running cluster; the "fix" options in
+// its last step are not set up in the POC. s2s: describes options the POC does not
+// set up (client credentials, token exchange); only option 1 matches the POC's checks.
 
 export type Kind = 'front' | 'back' | 'self' | 'fail' | 'ok'
 
@@ -82,53 +83,61 @@ export const flows = {
     ],
   },
 
-  spoof: {
-    actors: ['Client', 'Gateway', 'OAuth2-Proxy', 'Spring'],
+  s2s: {
+    actors: ['Service A', 'Keycloak', 'Service B · sidecar'],
     intro: {
-      title: 'Can a client fake the identity headers?',
-      text: 'Spring receives the user’s name in X-Auth-Request-User. What stops a client from sending that header itself? Click to try it on both access paths.',
+      title: 'One service calls another',
+      text: 'Service A needs data from service B. Which token should it send? Click for the three options. None of them is set up in the POC.',
     },
     steps: [
       {
-        from: 0, to: 1, kind: 'fail', row: 0, label: 'fake User: admin',
-        title: 'Browser access: bob fakes his identity header',
-        text: 'bob sends his own session cookie, plus a header that claims he is admin.',
-        code: 'GET app.localhost/api/whoami\nCookie: _oauth2_proxy=<bob>\nX-Auth-Request-User: admin',
-        chips: ['fake header'],
+        from: 0, to: 2, kind: 'fail', row: 0, label: 'forward alice’s token as is',
+        title: 'Option 1: just forward the user’s token',
+        text: 'The token was issued for A, so its audience is A. B’s RequestAuthentication only accepts tokens for B, so the call fails. That is the audience check doing its job.',
+        code: 'GET b/data\nAuthorization: Bearer <alice, aud: a>\n← 403 Audiences in Jwt are not allowed',
+        chips: ['wrong audience'],
       },
       {
-        from: 2, to: 1, kind: 'back', row: 1, label: 'answer: user = bob',
-        title: 'The real answer overwrites it',
-        text: 'The gateway asks OAuth2-Proxy, and ext_authz copies its answer into the request. Headers with the same name are replaced.',
-        code: '← 200\nX-Auth-Request-User: <bob’s id>',
-        chips: ['overwritten'],
+        from: 0, to: 1, kind: 'back', row: 1, label: 'client_credentials',
+        title: 'Option 2: A gets its own token',
+        text: 'A logs in as itself, with its own client ID and secret. There is no user in this token: the subject is A’s service account.',
+        code: 'POST /realms/demo/protocol/openid-connect/token\ngrant_type=client_credentials\nclient_id=a&client_secret=…',
+        chips: ['client credentials'],
       },
       {
-        from: 1, to: 3, kind: 'ok', row: 2, label: 'X-Auth-Request-User = bob',
-        title: 'Spring sees bob',
-        text: 'The fake value never arrives. Measured on the cluster: Spring shows bob’s id.',
-        code: '"xAuthRequestUser": "b774…"   (bob)',
-        chips: ['safe on browser access'],
+        from: 1, to: 0, kind: 'back', row: 2, label: 'token: sub = service-account-a',
+        title: 'Keycloak issues a token for the service',
+        text: 'The audience is B, and the roles are the roles of A’s service account. B decides what A may do, not what alice may do.',
+        code: '{ "sub": "service-account-a", "azp": "a",\n  "aud": "b", "resource_access": { "b": { "roles": ["reader"] } } }',
+        chips: ['no user'],
       },
       {
-        from: 0, to: 1, kind: 'fail', row: 3, label: 'alice + fake User',
-        title: 'API access: nothing overwrites it',
-        text: 'On api.localhost there is no ext_authz. The gateway checks the token and, before our fix, passed the fake header on to Spring.',
-        code: 'GET api.localhost/api/whoami\nAuthorization: Bearer <alice>\nX-Auth-Request-User: admin\n← "xAuthRequestUser": "admin"   (before the fix)',
-        chips: ['found while testing'],
+        from: 0, to: 2, kind: 'ok', row: 3, label: 'Bearer <A’s token> → 200',
+        title: 'Good for jobs that act for themselves',
+        text: 'B’s sidecar checks the audience and the service roles, exactly like for a user. Use it for batch jobs and internal calls that are not done on behalf of a user.',
+        code: 'GET b/data\nAuthorization: Bearer <service-account-a, aud: b>\n← 200',
+        chips: ['machine to machine'],
       },
       {
-        from: 1, to: 3, kind: 'ok', row: 4, label: 'identity headers removed',
-        title: 'The fix: remove them on the route',
-        text: 'The api.localhost routes now remove every X-Auth-Request header that a client sends. Measured after the fix: Spring receives nothing.',
-        code: 'headers:\n  request:\n    remove: [x-auth-request-user, x-auth-request-email,\n             x-auth-request-access-token, …]\n← "xAuthRequestUser": null',
-        chips: ['k8s/app/app.yaml'],
+        from: 0, to: 1, kind: 'back', row: 4, label: 'token exchange: alice → aud b',
+        title: 'Option 3: exchange alice’s token',
+        text: 'If A acts on behalf of alice, it trades her token for a new one that is issued for B. This is OAuth token exchange, RFC 8693, which Keycloak supports.',
+        code: 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange\nsubject_token=<alice, aud: a>\naudience=b',
+        chips: ['RFC 8693'],
       },
       {
-        from: 3, to: 3, kind: 'self', row: 5, label: 'decide on verified claims',
-        title: 'The rule behind it',
-        text: 'Identity headers are hints from the gateway, never from the client. Access decisions use the verified token: the sidecar checks its signature and audience, and the policy checks its roles.',
-        chips: ['trust the token, not the header'],
+        from: 1, to: 0, kind: 'back', row: 5, label: 'token: sub = alice, aud = b',
+        title: 'Still alice, now for B',
+        text: 'The new token keeps alice as the subject, with B as the audience. B’s rules see alice’s roles, and B knows the call came through A.',
+        code: '{ "sub": "<alice>", "azp": "a", "aud": "b", … }',
+        chips: ['on behalf of the user'],
+      },
+      {
+        from: 0, to: 2, kind: 'ok', row: 6, label: 'Bearer <alice for B> → 200',
+        title: 'Rule of thumb',
+        text: 'Acting for itself: client credentials. Acting for a user: token exchange. Never widen a token’s audience just to make a call work.',
+        code: 'GET b/data\nAuthorization: Bearer <alice, aud: b>\n← 200 (if alice has the role)',
+        chips: ['least privilege'],
       },
     ],
   },

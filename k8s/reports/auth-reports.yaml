@@ -21,6 +21,13 @@ spec:
         - name: Authorization
           prefix: "Bearer "
         - name: X-Auth-Request-Access-Token
+      # Identity headers come from the verified token, overwriting anything the
+      # client sent, so the app can trust them on every path.
+      outputClaimToHeaders:
+        - header: x-auth-request-user
+          claim: sub
+        - header: x-auth-request-email
+          claim: email
 
 ---
 

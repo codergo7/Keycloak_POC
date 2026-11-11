@@ -8,7 +8,7 @@ REPORTS_IMAGE ?= iam-poc-reports:dev
 
 .PHONY: help prereqs cluster istio namespaces build load deploy wait up status \
         token-alice token-bob token-bob-reports token-admin decode smoke demo-api demo-door2 browser keycloak logs \
-        logs-kc logs-proxy logs-app logs-reports shell-app restart clean reset
+        logs-kc logs-proxy logs-app logs-reports shell-app restart wake clean reset
 
 help:
 	@echo "IAM POC targets"
@@ -26,6 +26,7 @@ help:
 	@echo "  make logs-app      Follow Spring app logs"
 	@echo "  make logs-reports  Follow reports API logs"
 	@echo "  make status        Show pods/services/gateways"
+	@echo "  make wake          After laptop sleep (503s): restart the mesh in order, keeps Keycloak data"
 	@echo "  make reset         Delete and recreate everything"
 	@echo "  make clean         Delete Kind cluster"
 	@echo
@@ -157,6 +158,27 @@ restart:
 	kubectl -n identity rollout restart deploy/keycloak deploy/oauth2-proxy
 	kubectl -n spring-api rollout restart deploy/spring-app
 	kubectl -n reports-api rollout restart deploy/reports-api
+
+# After the laptop sleeps, workload certificates expire and every request gets a 503.
+# Restart in order: gateways, Postgres's sidecar, Keycloak, istiod (fetches the JWKS
+# again), then the apps. Postgres keeps its data in an emptyDir, so only its istio-proxy
+# container is restarted (quitquitquit); restarting the pod would wipe Keycloak's users.
+wake:
+	kubectl -n istio-system rollout restart deploy/istio-ingressgateway deploy/istio-egressgateway
+	kubectl -n istio-system rollout status deploy/istio-ingressgateway --timeout=180s
+	kubectl -n identity exec deploy/postgres -c istio-proxy -- pilot-agent request POST quitquitquit >/dev/null || true
+	kubectl -n identity wait pod -l app=postgres --for=condition=Ready --timeout=180s
+	kubectl -n identity rollout restart deploy/keycloak
+	kubectl -n identity rollout status deploy/keycloak --timeout=300s
+	kubectl -n istio-system rollout restart deploy/istiod
+	kubectl -n istio-system rollout status deploy/istiod --timeout=180s
+	kubectl -n identity rollout restart deploy/oauth2-proxy
+	kubectl -n spring-api rollout restart deploy/spring-app
+	kubectl -n reports-api rollout restart deploy/reports-api
+	kubectl -n identity rollout status deploy/oauth2-proxy --timeout=180s
+	kubectl -n spring-api rollout status deploy/spring-app --timeout=180s
+	kubectl -n reports-api rollout status deploy/reports-api --timeout=180s
+	@echo "Mesh restarted. Run: make smoke"
 
 clean:
 	kind delete cluster --name "$(CLUSTER)"

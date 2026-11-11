@@ -226,7 +226,7 @@ These are the Keycloak terms that I will use during the talk.
 --cookie-refresh=4m
 --cookie-expire=8h
 --upstream=static://200   # auth check only
---scope=openid profile email groups app-audience
+--scope=openid profile email groups app-audience reports
 --set-xauthrequest=true   # X-Auth-Request-* headers
 --pass-access-token=true  # …incl. the access token
 --pass-authorization-header=true
@@ -652,11 +652,11 @@ Now the same view for API access. A script calls api.localhost with alice's toke
 
 [click] 4. The router removes every X-Auth-Request header, because on this path they can only come from the client. Our fake admin header is gone. We'll try this live in the demo.
 
-[click] 5. In Spring's sidecar, keycloak-jwt checks the same token again, and this time also the audience: it must be issued for spring-api.
+[click] 5. In Spring's sidecar, keycloak-jwt checks the same token again, and this time also the audience: it must be issued for spring-api. Then it writes alice's real ID from the token into X-Auth-Request-User.
 
 [click] 6. rbac at the sidecar. /api/user needs the role user, and alice has it.
 
-[click] 7. Spring answers 200. It never checked the token, and it never saw the fake header.
+[click] 7. Spring answers 200. It never checked the token, and the only X-Auth-Request-User it saw came from the token.
 
 Now three requests that fail, each at a different filter.
 
@@ -684,7 +684,7 @@ In short: the gateway checks that there's a valid token. The sidecar checks that
     <tr><td class="faint">2</td><td>curl /api/user, no token</td><td class="code-403">403 access denied</td></tr>
     <tr><td class="faint">3</td><td>curl /api/user, tampered token</td><td class="code-401">401 JWT fails</td></tr>
     <tr><td class="faint">4</td><td>alice token → /api/user, then /api/admin</td><td><span class="code-200">200</span>, then <span class="code-403">403</span></td></tr>
-    <tr><td class="faint">5</td><td>alice token + fake <code>X-Auth-Request-User: admin</code> → /api/headers</td><td><span class="code-200">200</span>, header removed</td></tr>
+    <tr><td class="faint">5</td><td>alice token + fake <code>X-Auth-Request-User: admin</code> → /api/headers</td><td><span class="code-200">200</span>, Spring sees alice’s real ID</td></tr>
     <tr><td class="faint">6</td><td>bob token without scope=reports → GET /reports</td><td class="code-403">403 wrong audience</td></tr>
     <tr><td class="faint">7</td><td>bob token with scope=reports → GET, then POST /reports</td><td><span class="code-200">200</span>, then <span class="code-403">403</span></td></tr>
     <tr><td class="faint">8</td><td>Add bob to <code>/finance/managers</code> in Keycloak → POST /reports</td><td><span class="code-403">403</span>, then <span class="code-200">201</span></td></tr>
@@ -751,13 +751,13 @@ A 403 means: I know who you are, and the answer is no.
 
 **5 · A fake identity header**
 
-*On screen: the list of X-Auth-Request headers that the route removes.*
+*On screen: keycloak-jwt, with outputClaimToHeaders: the user ID comes from the token's sub claim.*
 
-In the browser demo, Spring learned who alice was from X-Auth-Request headers. What if a script just sends one itself? alice sends X-Auth-Request-User: admin. I expect 200, and no such header at Spring.
+Spring learns who the caller is from the X-Auth-Request-User header. What if a script just sends one itself? alice sends X-Auth-Request-User: admin. I expect 200, and Spring should see alice's real ID, not admin.
 
-*Enter. Result: 200, "X-Auth-Request headers that Spring received: none".*
+*Enter. Result: 200, and X-Auth-Request-User at Spring is alice's user ID.*
 
-The gateway removed it. That's why Spring can trust these headers: only OAuth2-Proxy can set them.
+The gateway removed the fake header, and Spring's sidecar wrote the real one from the verified token. So Spring can trust this header: it always comes from the token, never from the client.
 
 **6 · bob without the reports scope**
 
@@ -930,43 +930,20 @@ routeAlias: b-claims
 Every endpoint asks for a claim in the token. Spring checks realm roles, and the reports API checks its own client roles. Two apps, two languages, and no security code in either.
 
 [click] /api/public needs nothing, so everyone gets 200.
+
 [click] /api/user needs the role user, and all three users have it.
+
 [click] /api/headers needs developer, so only alice gets in. She gets that role from her engineering group.
+
 [click] /api/admin needs admin, so only the admin user gets in.
+
 [click] Reading reports needs the reports viewer role. Only bob has it, from his finance group.
+
 [click] Creating a report needs editor, and nobody has it, until bob joins the managers group, as we saw in the demo.
 
 [click] The reports API also checks the audience. A token only has reports-api in its audience if the client asks for the reports scope. Without it, even bob gets a 403. This stops a token made for one API from being used against another.
 -->
 
----
-clicks: 9
-routeAlias: b-filters
----
-
-<div class="kicker">Backup · Inside Envoy · real filter order</div>
-
-# One request, nine checks in Envoy
-
-<FilterChain />
-
-<!--
-This is the real order of the checks, which I took from the running Envoy configuration. The first six happen at the ingress gateway.
-
-[click] 1. The gateway checks whether it accepts this host, and if not, it returns 404.
-[click] 2. The VirtualService picks the destination. Its header rules are applied at the end.
-[click] 3. For browser requests, the CUSTOM policy asks OAuth2-Proxy, and without a session the user is redirected to Keycloak with a 302.
-[click] 4. RequestAuthentication checks the bearer token if there is one. A bad token gets a 401, but a request with no token can continue.
-[click] 5. The ALLOW policy looks for a matching rule, and if there is none, the answer is 403.
-[click] 6. The router applies the header rules, for example removing the cookie, and sends the request to the pod.
-
-Now the request arrives at Spring's sidecar.
-[click] 7. The JWT is validated again, and this time the audience must be spring-api. A bad token gets a 401, and a token issued for another audience gets a 403.
-[click] 8. The ALLOW policy checks whether the role claim matches the path, otherwise the answer is 403.
-[click] 9. Finally, Spring receives the request with the identity headers.
-
-Remember that OAuth2-Proxy runs before the JWT check, and that the header rules run last.
--->
 
 ---
 clicks: 6
@@ -990,13 +967,53 @@ routeAlias: b-six
 Every request passes the same checks in Envoy: at the ingress gateway the route, the OAuth2-Proxy check, the JWT check and the ALLOW policy, and then the JWT check and the ALLOW policy again at Spring's sidecar. Now we send six different requests and see where each one stops.
 
 [click] A browser with no session stops at the CUSTOM check and gets a 302 to Keycloak.
+
 [click] A browser with a session passes every check and gets a 200.
+
 [click] A curl request with no token stops at the gateway's ALLOW check and gets a 403.
+
 [click] A curl request with a tampered token stops at the JWT check and gets a 401.
+
 [click] alice's valid token on the admin endpoint reaches the sidecar's ALLOW check and gets a 403, because she has no admin role.
+
 [click] The admin token passes every check and gets a 200.
 
 The legend at the bottom sums up the codes. A 302 sends you to log in, and a 200 means OK. A 401 means the token is bad, and it always comes from a JWT check. A 403 means you are not allowed, and it usually comes from an ALLOW check. The one exception is a token issued for another audience, which the JWT check answers with a 403.
+-->
+
+---
+clicks: 4
+routeAlias: b-spoof
+---
+
+<div class="kicker">Backup · security · identity headers</div>
+
+# Can someone fake who they are?
+
+<RequestLanes
+  :cols="['Route', 'CUSTOM', 'JWT', 'ALLOW', 'Router', 'JWT', 'ALLOW', 'Spring']"
+  :groups="[{ label: 'ingress gateway', span: 5 }, { label: 'spring sidecar', span: 3 }]"
+  :lanes="[
+    { who: 'Script · api.localhost', req: 'alice token + User: admin', stop: 7, code: '200 · alice', cls: 'code-200', why: 'router drops it, sidecar writes alice' },
+    { who: 'Script · app.localhost', req: 'bob token + User: alice', stop: 1, code: '302 → login', cls: 'code-30x', why: 'browser only, no exceptions' },
+    { who: 'Pod in the cluster', req: 'no token + User: admin', from: 5, stop: 6, code: '403', cls: 'code-403', why: 'no token, no principal' },
+    { who: 'Pod in the cluster', req: 'alice token + User: admin', from: 5, stop: 7, code: '200 · alice', cls: 'code-200', why: 'sidecar overwrites it from the token' },
+  ]" />
+
+<p class="remember text-sm mt-4">Spring reads <code>X-Auth-Request-User</code>, so only the platform may set it: <b>the sidecar always writes it from the verified token.</b></p>
+
+<!--
+Spring learns who the caller is from the X-Auth-Request-User header. So the obvious question is: can a client just send that header itself? Here are four attempts, all measured on the cluster.
+
+[click] A script on api.localhost sends alice's token and claims to be admin. The gateway route removes the fake header, and Spring's sidecar writes alice's real ID from her token. Spring sees alice.
+
+[click] A script on app.localhost sends bob's token and claims to be alice. app.localhost is for browsers only, so OAuth2-Proxy is asked, finds no session, and sends the script to the login page. Before our fix, this request got a 200 and Spring believed it was alice. That was the gap we found.
+
+[click] A pod inside the cluster skips the gateway and calls Spring directly, with a fake header and no token. The sidecar finds no token and no principal, so the answer is 403.
+
+[click] The same pod, now with alice's token and a fake admin header. The sidecar overwrites the header from the token, so Spring sees alice, not admin.
+
+So the rule is: the identity header always comes from the verified token, never from the client.
 -->
 
 ---
@@ -1010,7 +1027,7 @@ routeAlias: b-policy
 <div class="grid grid-cols-[1fr_1.1fr] gap-6 mt-3">
 <div class="flex flex-col gap-3">
   <div v-click="1" class="card"><h3>CUSTOM policy at the ingress</h3><p>The decision is delegated to OAuth2-Proxy (Envoy ext_authz).</p></div>
-  <div v-click="2" class="card"><h3>Only real browser traffic</h3><p>Skips <code>/oauth2/*</code>, <code>/api/public</code>, health checks, requests with a Bearer token, and non-Mozilla user agents.</p></div>
+  <div v-click="2" class="card"><h3>Browser only, no exceptions</h3><p>Every request except <code>/oauth2/*</code>, <code>/api/public</code> and the health check. Scripts use <code>api.localhost</code>.</p></div>
   <div v-click="3" class="card"><h3>Nothing leaks back</h3><p>Route rules strip <code>x-auth-request-*</code> from oauth2-proxy’s responses. No EnvoyFilter.</p></div>
   <div v-click="4" class="card"><h3>Spring never sees the session</h3><p>The cookie is removed from the request after ext_authz has used it.</p></div>
 </div>
@@ -1041,11 +1058,8 @@ spec:
         hosts: [app.localhost]
         notPaths: [/oauth2/*, /api/public,
                    /actuator/health]
-    when:
-    - key: request.headers[Authorization]
-      notValues: ["Bearer *"]
-    - key: request.headers[User-Agent]
-      values: ["Mozilla/*"]
+    # no exceptions for Bearer tokens
+    # or user agents: browser only
 ```
 ```yaml
 # oauth2-proxy.yaml · VirtualService
@@ -1088,7 +1102,7 @@ This is the policy for browser access. For app.localhost, Istio asks OAuth2-Prox
 
 [click] A CUSTOM AuthorizationPolicy at the ingress hands this decision to OAuth2-Proxy.
 
-[click] The policy only applies to real browser traffic. It skips the /oauth2 paths, the public endpoint and the health check, and it also skips requests that carry a bearer token or that do not come from a browser.
+[click] Every request to app.localhost goes through this check, except the /oauth2 paths, the public endpoint and the health check. There are no exceptions for bearer tokens or for scripts: app.localhost is for browsers, and scripts use api.localhost. We used to have those exceptions, and they opened a gap that I'll show on the lessons slide.
 
 [click] This VirtualService is for the /oauth2 route. It removes the identity headers from OAuth2-Proxy's replies, so they do not leak back to the browser.
 
@@ -1177,25 +1191,59 @@ So how long can Alice stay logged in without typing her password?
 -->
 
 ---
-clicks: 5
-routeAlias: b-cookie
+clicks: 7
+routeAlias: b-logout
 ---
 
-<div class="kicker">Backup · session cookie path</div>
+<div class="kicker">Backup · tokens and sessions · logout</div>
 
-# The session cookie goes to ext_authz, not to the app
+# What does signing out really end?
 
-<CookieJourney />
+<QaFlow flow="logout" />
 
 <!--
-Let's follow the session cookie through one request.
+People often ask what happens when a user signs out. Three things hold the login: the OAuth2-Proxy cookie, the Keycloak session, and tokens that were already issued. All of this was measured on the cluster.
 
-[click] 1. The browser sends the session cookie to the gateway.
-[click] 2. The gateway passes the cookie to OAuth2-Proxy, which uses it to check the session.
-[click] 3. OAuth2-Proxy answers 200 and returns the identity headers to the gateway.
-[click] 4. The router removes the cookie, and only the identity headers continue to Spring.
-[click] 5. On the way back, no identity header is returned to the browser. The browser only gets a new cookie when the session was refreshed.
+[click] bob signs out of the app. OAuth2-Proxy deletes its cookie, and that's all it does.
+
+[click] His next click goes to Keycloak, like the first visit.
+
+[click] But Keycloak's own session is still alive, so it logs him straight back in, without a password.
+
+[click] And a copy of the old cookie still works, because the cookie is the session, and OAuth2-Proxy keeps no list of signed-out sessions.
+
+[click] An admin can end bob's Keycloak session. Then his refresh token is refused, and the browser session ends at the next refresh.
+
+[click] But tokens already issued still work until they expire, at most 5 minutes, because Istio checks them offline.
+
+[click] To make logout complete: also end the Keycloak session, keep access tokens short, and if you need revocable sessions, keep them on the server instead of in the cookie.
 -->
+
+---
+clicks: 5
+routeAlias: b-kcdown
+---
+
+<div class="kicker">Backup · tokens and sessions · availability</div>
+
+# What if Keycloak goes down?
+
+<KeycloakDown />
+
+<!--
+What happens when Keycloak stops? I measured it: I logged in, took a token, and then scaled Keycloak to zero.
+
+[click] A script with a token from before keeps working. Istio checks the token with keys it already has, so it never needs Keycloak for a request. It works until the token expires: after 5 minutes, plus Envoy's 60 seconds of clock skew, the answer is 401, "Jwt is expired".
+
+[click] A browser that was already logged in keeps working too. After 4 minutes OAuth2-Proxy tries to refresh and fails, but it keeps using the token it has. Once that token expires, the browser is sent to the Keycloak login page, and that's a 503. I measured a 200 at 4 and a half minutes, and the login redirect at 6 and a half.
+
+[click] A new browser login fails at once, with a 503, because the login page is Keycloak.
+
+[click] And a script can't get a new token either.
+
+[click] So, already-issued tokens keep working, but everything new stops at once, and every existing session within about 5 minutes. Keycloak needs to be highly available, but a short restart doesn't take down the APIs.
+-->
+
 
 ---
 routeAlias: b-audience
@@ -1222,7 +1270,7 @@ routeAlias: b-audience
 <p class="text-xs muted mt-2">Same idea in Entra ID (<code>api://reports/.default</code>), Auth0 (<code>audience</code>) and RFC 8707 · RFC 9068 requires <code>aud</code></p>
 
 <!--
-This backup slide answers the questions people usually ask about audiences and scopes. I only show it if one of them comes up. There are no animations.
+These are the questions people usually ask about audiences and scopes.
 
 Why check the audience if roles already decide? Roles say what the user may do, and the audience says which API the token was issued for. Without the audience check, a token that leaks from one service can be replayed against every other service.
 
@@ -1240,18 +1288,83 @@ The same idea exists in every major identity provider: Entra ID uses api://repor
 -->
 
 ---
+clicks: 7
+routeAlias: b-s2s
+---
+
+<div class="kicker">Backup · service to service</div>
+
+# What about one service calling another?
+
+<QaFlow flow="s2s" />
+
+<!--
+A common question: what if one service calls another? Which token does it send? This isn't set up in the POC, but the same checks apply.
+
+[click] Option 1: just forward the user's token. It was issued for service A, so service B's sidecar rejects it: wrong audience, 403. That's the audience check doing its job.
+
+[click] Option 2: A gets its own token, with client credentials: its own client ID and secret.
+
+[click] That token has no user in it. The subject is A's service account, the audience is B, and the roles are the service's roles.
+
+[click] B's sidecar checks it like any other token. This fits jobs that act for themselves.
+
+[click] Option 3: A acts on behalf of alice. It exchanges her token at Keycloak for a new one issued for B. That's OAuth token exchange.
+
+[click] The new token is still alice, but now with B as the audience.
+
+[click] So: acting for itself, use client credentials. Acting for a user, use token exchange. And never widen a token's audience just to make a call work.
+-->
+
+---
+clicks: 9
+routeAlias: b-debug
+---
+
+<div class="kicker">Backup · troubleshooting</div>
+
+# How do I debug a 401 or 403?
+
+<DebugTree />
+
+<!--
+When something is denied, the first question is: which filter said no? The status code and the short body text tell you, and every message here came from our cluster.
+
+[click] A 302 to Keycloak comes from ext_authz: OAuth2-Proxy found no session. For a new browser that's normal.
+
+[click] 401, "Jwt verification fails": the signature doesn't match Keycloak's keys. Either the token was changed, or istiod still has old keys.
+
+[click] 401, "Jwt is expired": the token is older than 5 minutes. Get a new one.
+
+[click] 401, "Jwt issuer is not configured": the token comes from an issuer that RequestAuthentication doesn't list, for example another realm.
+
+[click] 403, "Audiences in Jwt are not allowed": the token is valid, but it was issued for another API. Ask for the right scope.
+
+[click] 403, "RBAC: access denied", and the response has no upstream time header: the gateway denied it, so there was no token, or the path isn't in the gateway's rules.
+
+[click] The same 403, but with the upstream time header: the gateway let it through, and the sidecar found no matching role. Decode the token and compare its roles with the policy.
+
+[click] And a 503 isn't a policy at all: the pod is down, or the mesh certificates expired, which happens after the laptop sleeps.
+
+[click] These four tools answer almost every case: curl with -i, Envoy debug logging, the sidecar's logs, and decoding the token.
+-->
+
+---
 routeAlias: b-lessons
 ---
 
 <div class="kicker">Backup · lessons from building the POC</div>
 
-# Three issues we found
+# Six issues we found
 
-<div class="grid grid-cols-3 gap-4 mt-5">
+<div class="grid grid-cols-3 gap-3 mt-3 lessons">
   <div v-for="(l, i) in [
       { icon: 'i-carbon-time', t: 'JWKS race condition', d: 'istiod fetched Keycloak’s keys before Keycloak was up, used a placeholder key, and every JWT failed for ~20 min. Fix: restart istiod once Keycloak is ready.', chip: '401 Jwt verification fails', cls: 'red' },
       { icon: 'i-carbon-flow', t: 'Header rules are per route', d: 'The leaking x-auth-request-* headers came from the /oauth2/ route. A rule on the Spring route could never remove them.', chip: 'no EnvoyFilter needed', cls: 'green' },
       { icon: 'i-carbon-warning', t: 'ext_authz needs response headers', d: 'With upstream static://200, the token reaches Spring only as an oauth2-proxy response header. Turn that off and you get 403.', chip: 'RBAC: access denied', cls: 'red' },
+      { icon: 'i-carbon-user-identification', t: 'Exceptions opened a spoofing gap', d: 'The CUSTOM policy skipped Bearer and non-browser requests, so a valid token plus a fake X-Auth-Request-User fooled Spring. Fix: no exceptions, and the sidecar writes identity from the token.', chip: 'outputClaimToHeaders', cls: 'green' },
+      { icon: 'i-carbon-moon', t: 'The laptop slept, the mesh broke', d: 'Workload certificates expired during sleep, and every request got 503. Fix: make wake restarts them in order: gateways, Postgres’s sidecar, Keycloak, istiod, then the apps.', chip: 'make wake', cls: 'green' },
+      { icon: 'i-carbon-password', t: 'The admin console needs the master realm', d: 'The gateway checks every Bearer token, even on keycloak.localhost. Admin tokens come from the master realm, so its issuer must be listed too.', chip: '401 Jwt issuer is not configured', cls: 'red' },
     ]" :key="l.t" class="card !p-4"
     v-motion :initial="{ opacity: 0, y: 40 }" :enter="{ opacity: 1, y: 0, transition: { delay: 150 + i * 180 } }">
     <span class="icon-dot orange mb-3"><span :class="l.icon" /></span>
@@ -1261,12 +1374,23 @@ routeAlias: b-lessons
   </div>
 </div>
 
+<style>
+.lessons .card p { font-size: 0.68rem; line-height: 1.4; }
+.lessons .card h3 { font-size: 0.9rem; }
+</style>
+
 <!--
-We ran into three problems while building this.
+We ran into six problems while building this.
 
-The first is a race condition with the JWKS. If Keycloak is not ready when istiod fetches its public keys, istiod uses a placeholder key for about 20 minutes, and every token fails with a 401. The fix is to restart istiod once Keycloak is ready.
+The JWKS race: if Keycloak isn't ready when istiod fetches its keys, every token fails for about 20 minutes. We restart istiod once Keycloak is ready.
 
-The second is that header rules belong to a single route. The leaking headers came from the /oauth2 route, so a rule on the Spring route could never remove them.
+Header rules belong to one route. The leaking headers came from the /oauth2 route, so a rule on the Spring route could never remove them.
 
-The third is that the token reaches Spring only as a header in OAuth2-Proxy's answer. If you turn off those response headers, every browser request gets a 403.
+The token reaches Spring only as a header in OAuth2-Proxy's answer. Turn those headers off, and every browser request gets a 403.
+
+The spoofing gap: our CUSTOM policy skipped requests with a bearer token. Anyone with a valid token could then send a fake X-Auth-Request-User, and Spring believed it. Now app.localhost has no exceptions, and the sidecar writes the identity headers from the verified token.
+
+When the laptop sleeps, the mesh certificates expire, and every request gets a 503. One command fixes it: make wake restarts the pods in the right order.
+
+And the Keycloak admin console sends master-realm tokens through the same gateway, so the gateway has to trust that issuer too, or the console gets a 401.
 -->

@@ -290,8 +290,8 @@ const API: ApiStep[] = [
     col2: [
       { c: 'part', cls: 'p', tag: 'checked again', rows: [['signature', 'JWKS key UHlGaDFC…', '✓'], ['iss', ISS, '✓'], ['aud', 'spring-api', '✓']] },
       { c: 'part', cls: 'out', tag: 'stored for rbac', rows: [['principal', SUB], ['request.auth.claims', 'the payload']] },
+      { c: 'part', cls: 'h', tag: 'written from the token', rows: [['X-Auth-Request-User', 'sub = 170b145d…'], ['X-Auth-Request-Email', 'email = alice@example.test']] },
     ],
-    p: 'The audience is checked here, by the API the token was issued for.',
     yaml: { file: 'auth-app.yaml', lines: [
       { t: 'kind: RequestAuthentication' },
       { t: 'metadata: { name: keycloak-jwt }' },
@@ -301,18 +301,19 @@ const API: ApiStep[] = [
       { t: '  - issuer: http://keycloak.localhost:8080/realms/demo', hl: true, mark: '✓' },
       { t: '    jwksUri: …/realms/demo/protocol/openid-connect/certs', mark: '✓' },
       { t: '    audiences: [spring-api]', hl: true, mark: '✓' },
-      { t: '    fromHeaders:' },
-      { t: '    - name: Authorization   # prefix "Bearer "', hl: true, mark: '✓' },
-      { t: '    - name: X-Auth-Request-Access-Token' },
+      { t: '    fromHeaders: [Authorization, X-Auth-Request-Access-Token]', mark: '✓' },
+      { t: '    outputClaimToHeaders:', hl: true },
+      { t: '    - { header: x-auth-request-user, claim: sub }', hl: true, mark: '✓' },
+      { t: '    - { header: x-auth-request-email, claim: email }', hl: true },
     ] },
-    cap: 'jwt_authn at the sidecar: keycloak-jwt reads the same token from Authorization, verifies it again, and checks the audience spring-api.' },
+    cap: 'jwt_authn at the sidecar: keycloak-jwt verifies the same token again, checks the audience spring-api, and writes the identity headers from the token.' },
   { a: 5, path: '/api/user', auth: 'ok', spoof: false,
     col2: [{ c: 'part', cls: 'out', tag: 'from jwt_authn', rows: [['principal', SUB, '✓'], ['claims.realm_access.roles', '["developer", "user"]', 'user ✓']] }],
     yaml: yScAp(false),
     cap: 'rbac at the sidecar: the rule for /api/user needs the realm role user, and alice has it.' },
   { a: 6, path: '/api/user', auth: 'ok', spoof: false,
     col2: [{ c: 'call', cls: 'ok', t: '← 200 OK from Spring' }],
-    p: 'Spring never saw the fake header, and it did not verify the token itself: two Envoy proxies did that.',
+    p: 'Spring did not verify the token itself, and the only X-Auth-Request-User it saw came from the token: alice, not admin.',
     cap: 'Spring receives the request and answers 200.' },
   { a: 2, fail: 2, failText: '✕ 403', v: { 1: 'no token' }, path: '/api/user', auth: 'none', spoof: false,
     col2: [
@@ -354,7 +355,7 @@ function apiVerdict(i: number) {
 }
 const apiHeaders = computed(() => {
   const st = apiStep.value
-  const h: { k: string; v: string; show: boolean; gone?: boolean; fresh?: boolean; hl?: boolean; fake?: boolean; tag?: string }[] = [
+  const h: { k: string; v: string; show: boolean; gone?: boolean; fresh?: boolean; hl?: boolean; fake?: boolean; tag?: string; id?: string }[] = [
     { k: 'GET', v: st.path, show: true },
     { k: 'Host', v: 'api.localhost', show: true },
   ]
@@ -362,6 +363,7 @@ const apiHeaders = computed(() => {
   if (st.auth === 'bad') h.push({ k: 'Authorization', v: 'Bearer eyJhbGci…FH-WYO48kC3A5ctsX', show: true, fake: true })
   if (st.spoof || (s.value >= 4 && s.value <= 7)) h.push({ k: 'X-Auth-Request-User', v: 'admin', show: true, fake: true, gone: s.value >= 4,
     tag: s.value >= 4 ? 'removed by the router' : 'fake · sent by the client, not by OAuth2-Proxy' })
+  if (s.value >= 5 && s.value <= 7) h.push({ k: 'X-Auth-Request-User', id: 'xaru-real', v: '170b145d…', show: true, fresh: s.value === 5, tag: 'written by the sidecar, from the token' })
   return h
 })
 
@@ -474,7 +476,7 @@ const appOff = computed(() => (api.value ? apiFail.value : bob.value))
         <div class="col-title">The request</div>
         <div class="req">
           <TransitionGroup name="hdr">
-            <div v-for="h in headers.filter(h => h.show)" :key="h.k" class="hdr"
+            <div v-for="h in headers.filter(h => h.show)" :key="(h as any).id || h.k" class="hdr"
               :class="{ gone: h.gone, fresh: h.fresh, hl: h.hl, fake: h.fake }">
               <span class="k">{{ h.k }}:</span> <span class="v">{{ h.v }}</span>
               <em v-if="h.tag" class="htag">{{ h.tag }}</em>

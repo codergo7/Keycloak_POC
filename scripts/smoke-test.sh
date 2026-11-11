@@ -291,7 +291,7 @@ section "10. Trust boundary — client-sent identity headers are removed"
 
 echo "Scenario:"
 echo "  Alice sends a valid token plus X-Auth-Request-User: admin to api.localhost."
-echo "  There is no ext_authz on api.localhost, so the route must remove the header."
+echo "  The route removes it, and the sidecar writes the real user ID from the token."
 echo
 
 if [[ -n "$ALICE" ]]; then
@@ -300,8 +300,8 @@ if [[ -n "$ALICE" ]]; then
     -H "Authorization: Bearer ${ALICE}" \
     -H 'X-Auth-Request-User: admin' \
     "${API_URL}/api/whoami" | jq -r .xAuthRequestUser)"
-  if [[ "$SPOOF_USER" == "null" ]]; then
-    pass "Spoofed X-Auth-Request-User removed before Spring"
+  if [[ -n "$SPOOF_USER" && "$SPOOF_USER" != "null" && "$SPOOF_USER" != "admin" ]]; then
+    pass "Spoofed X-Auth-Request-User replaced by the token subject ($SPOOF_USER)"
   else
     fail "Spoofed X-Auth-Request-User reached Spring as '$SPOOF_USER'"
   fi

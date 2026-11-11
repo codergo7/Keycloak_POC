@@ -19,16 +19,13 @@ spec:
           prefix: "Bearer "
         - name: X-Auth-Request-Access-Token
 
-      # audiences:
-      # - "spring-app"
-      # outputPayloadToHeader: "x-jwt-payload"
-      # outputClaimToHeaders:
-      # - header: "x-user-id"
-      #   claim: "sub"
-      # - header: "x-user-email"
-      #   claim: "email"
-      # - header: "x-user-role"
-      #   claim: "role"         
+      # Identity headers come from the verified token, overwriting anything the
+      # client sent, so the app can trust them on every path.
+      outputClaimToHeaders:
+        - header: x-auth-request-user
+          claim: sub
+        - header: x-auth-request-email
+          claim: email
 
 ---
 

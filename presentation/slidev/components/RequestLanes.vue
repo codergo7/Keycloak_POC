@@ -1,17 +1,22 @@
 <script setup lang="ts">
 // Several requests run through the same checkpoints; each lane appears on a
-// click and its packet runs until the check that stops it (slide needs `clicks: 6`).
+// click and its packet runs until the check that stops it (slide needs `clicks:`
+// equal to the number of lanes). Pass cols/groups/lanes to reuse it; a lane's
+// `from` lets its packet start further right (a request that skips the gateway).
+import { computed } from 'vue'
 import { useSlideContext } from '@slidev/client'
 
+interface Lane { who: string; req: string; from?: number; stop: number; code: string; cls: string; why: string }
+const props = defineProps<{ cols?: string[]; groups?: { label: string; span: number }[]; lanes?: Lane[] }>()
 const { $clicks } = useSlideContext()
 
-const cols = ['Route', 'CUSTOM', 'JWT', 'ALLOW', 'JWT', 'ALLOW', 'Spring']
-const groups = [
+const defCols = ['Route', 'CUSTOM', 'JWT', 'ALLOW', 'JWT', 'ALLOW', 'Spring']
+const defGroups = [
   { label: 'ingress gateway', span: 4 },
   { label: 'spring sidecar', span: 3 },
 ]
 
-const lanes = [
+const defLanes: Lane[] = [
   { who: 'Browser, no session', req: 'GET app/api/whoami', stop: 1, code: '302 → Keycloak', cls: 'code-30x', why: 'oauth2-proxy: no session' },
   { who: 'Browser, with session', req: 'GET app/api/whoami + cookie', stop: 6, code: '200', cls: 'code-200', why: 'token from X-Auth-Request-Access-Token' },
   { who: 'curl, no token', req: 'GET api/api/user', stop: 3, code: '403', cls: 'code-403', why: 'no requestPrincipal at the edge' },
@@ -20,8 +25,12 @@ const lanes = [
   { who: 'admin token', req: 'GET api/api/admin', stop: 6, code: '200', cls: 'code-200', why: 'role admin' },
 ]
 
+const cols = computed(() => props.cols ?? defCols)
+const groups = computed(() => props.groups ?? defGroups)
+const lanes = computed(() => props.lanes ?? defLanes)
+
 function pos(i: number) {
-  return `${(i / (cols.length - 1)) * 100}%`
+  return `${(i / (cols.value.length - 1)) * 100}%`
 }
 </script>
 
@@ -47,10 +56,10 @@ function pos(i: number) {
       </div>
       <div class="track">
         <div class="rail" />
-        <div v-for="(c, j) in cols" :key="j" class="tick" :class="{ passed: j < l.stop, stop: j === l.stop }"
+        <div v-for="(c, j) in cols" :key="j" class="tick" :class="{ passed: j < l.stop && j >= (l.from ?? 0), stop: j === l.stop, skipped: j < (l.from ?? 0) }"
           :style="{ left: pos(j), transitionDelay: $clicks > i ? j * 0.18 + 's' : '0s' }" />
         <div v-if="$clicks > i" class="packet" :class="l.cls"
-          :style="{ '--to': pos(l.stop), animationDuration: 0.3 + l.stop * 0.18 + 's' }" />
+          :style="{ '--from': pos(l.from ?? 0), '--to': pos(l.stop), animationDuration: 0.3 + (l.stop - (l.from ?? 0)) * 0.18 + 's' }" />
       </div>
       <div class="out-col">
         <div v-if="$clicks > i" class="out" :style="{ animationDelay: 0.35 + l.stop * 0.18 + 's' }">
@@ -94,7 +103,8 @@ function pos(i: number) {
   transform: translate(-50%, -50%); box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 20%, transparent);
   animation-name: run; animation-timing-function: cubic-bezier(0.5, 0, 0.3, 1); animation-fill-mode: forwards;
 }
-@keyframes run { from { left: 0; } to { left: var(--to); } }
+@keyframes run { from { left: var(--from, 0); } to { left: var(--to); } }
+.lane.shown .tick.skipped { opacity: 0.25; border-style: dashed; }
 
 .out { opacity: 0; animation: pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.3) forwards; }
 .out span { font: 700 0.95rem 'JetBrains Mono', monospace; }
