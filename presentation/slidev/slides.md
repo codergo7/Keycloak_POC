@@ -1317,6 +1317,33 @@ A common question: what if one service calls another? Which token does it send? 
 -->
 
 ---
+clicks: 6
+routeAlias: b-filters
+---
+
+<div class="kicker">Backup · inside Envoy</div>
+
+# From Istio YAML to envoy.filters.http.*
+
+<EnvoyFilters />
+
+<!--
+Envoy handles every request with a chain of HTTP filters. Each one has a name like envoy.filters.http.jwt_authn. Envoy has never heard of a RequestAuthentication or an AuthorizationPolicy.
+
+[click] istiod is the translator. It reads our YAML, turns it into Envoy configuration, and pushes it to every proxy. Istio itself is never in the request path. This command shows the real chain on our gateway, in this order.
+
+[click] The CUSTOM policy becomes two filters. A shadow rbac filter only marks the requests that match its rules, and ext_authz calls OAuth2-Proxy for those. A 302 to the login page comes from here.
+
+[click] RequestAuthentication becomes jwt_authn. It checks the signature, the issuer and the expiry, and writes the claims into the request's metadata. Notice the keys are inline: istiod fetched them from Keycloak. A request without a token passes; a bad token gets a 401.
+
+[click] The ALLOW policy becomes rbac. rbac never sees the token, it only reads what jwt_authn wrote. "Any request principal" turns into "iss and sub are set". That's why a token without a sub gets a 403.
+
+[click] The VirtualService becomes the route table, and the router filter is always last. It's not a check, it just sends the request on. A 503 comes from here.
+
+[click] The sidecar runs the same filters, minus ext_authz, because there's no CUSTOM policy there. Its jwt_authn also checks the audience and writes the identity headers, and its rbac checks the roles.
+-->
+
+---
 clicks: 9
 routeAlias: b-debug
 ---

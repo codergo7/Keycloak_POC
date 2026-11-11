@@ -9,6 +9,7 @@ const groups = [
   { t: 'Requests through Envoy', cls: 'blue', items: [
     { a: 'b-claims', l: 'Every endpoint and the claim it needs' },
     { a: 'b-six', l: 'Six requests, where each one stops' },
+    { a: 'b-filters', l: 'From Istio YAML to envoy.filters.http.*' },
     { a: 'b-debug', l: 'How to debug a 401 or 403' },
   ] },
   { t: 'Browser access and security', cls: 'orange', items: [
