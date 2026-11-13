@@ -656,7 +656,7 @@ Now the same view for API access. A script calls api.localhost with alice's toke
 
 [click] 6. rbac at the sidecar. /api/user needs the role user, and alice has it.
 
-[click] 7. Spring answers 200. It never checked the token, and the only X-Auth-Request-User it saw came from the token.
+[click] 7. Spring answers 200. Spring didn't check the token; its sidecar already did. And the X-Auth-Request-User it reads is alice's real ID, written by the sidecar from the token. The fake admin header never got this far.
 
 Now three requests that fail, each at a different filter.
 
@@ -1042,6 +1042,33 @@ When something is denied, the first question is: which filter said no? The statu
 -->
 
 ---
+clicks: 6
+routeAlias: b-login
+---
+
+<div class="kicker">Backup · who talks to Keycloak?</div>
+
+# The browser meets Keycloak at the gateway
+
+<LoginPaths />
+
+<!--
+A common question: when OAuth2-Proxy sends Alice to the login page, does the traffic go through OAuth2-Proxy? It does not.
+
+[click] 1. Alice has no cookie, so OAuth2-Proxy answers with a 302 redirect to Keycloak's public URL. That is all it does here.
+
+[click] 2. The browser opens its own request to keycloak.localhost. That name points to the same ingress gateway, which simply routes it to Keycloak. There is no login check on this host.
+
+[click] 3. Keycloak shows the login page, checks the password, and redirects back with a one-time code. OAuth2-Proxy never sees the password.
+
+[click] 4. The browser brings the code to slash oauth2 slash callback. The gateway routes that path to OAuth2-Proxy.
+
+[click] 5. Now OAuth2-Proxy swaps the code for tokens. It calls Keycloak pod to pod with its client secret, using the internal service name. This call skips the gateway and never touches the browser.
+
+[click] 6. So Keycloak has two names. The public name is what the browser uses, and it is the issuer inside every token. The internal name is what the pods use for the token endpoint and the signing keys. That is why our RequestAuthentications pair a public issuer with an internal jwksUri.
+-->
+
+---
 clicks: 4
 routeAlias: b-spoof
 ---
@@ -1333,7 +1360,7 @@ What happens when Keycloak stops? I measured it: I logged in, took a token, and 
 
 
 ---
-clicks: 9
+clicks: 13
 routeAlias: b-jwks
 ---
 
@@ -1355,6 +1382,14 @@ We have two RequestAuthentications, one at the gateway and one at the sidecar. B
 [click] istiod copies the keys into each proxy's config and pushes it. The keys live inside Envoy.
 
 [click] So every request is checked offline: find the key by kid, check the signature, issuer, expiry, and at the sidecar the audience. That's why tokens kept working while Keycloak was down.
+
+[click] Let's zoom into that filter, jwt_authn, on Spring's sidecar. It takes the token from the Authorization header, splits it at the two dots, and decodes the header and the payload. Those two parts are just base64, anyone can read them.
+
+[click] Then it checks the token with what it already has. The kid picks the key istiod pushed, the signature must match, and then the issuer, the expiry and the audience. If anything fails, the request stops right here.
+
+[click] If it passes, jwt_authn writes the claims into the request's metadata, a little notepad that travels with the request inside Envoy. On the sidecar it also writes the user headers for Spring.
+
+[click] The filters after it read that notepad. rbac reads the roles from it, and our access log reads the subject. But the notepad never leaves Envoy: Spring only sees headers. You can even see it in the logs: the gateway knows the subject, but it never wrote the header.
 
 [click] istiod fetches the keys again every 20 minutes. That's PILOT_JWT_PUB_KEY_REFRESH_INTERVAL. If they changed, it pushes the new ones.
 

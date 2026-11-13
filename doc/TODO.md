@@ -41,7 +41,7 @@ spec: { mtls: { mode: STRICT } }
 | postgres | 5432 | keycloak | `cluster.local/ns/identity/sa/keycloak` | already done (`k8s/keycloak/postgres-authorization.yaml`) |
 
 **Watch out, istiod:** with STRICT mTLS, Keycloak's sidecar refuses istiod's plaintext JWKS fetch. istiod
-then pushes its placeholder key and every token gets 401 "Jwt verification fails" (see backup slide 36,
+then pushes its placeholder key and every token gets 401 "Jwt verification fails" (see backup slide 37,
 click 7). Options to test: a port-level PERMISSIVE exception on Keycloak's 8080 limited to the `/certs`
 path by an ALLOW rule, or serving the JWKS another way. Decide before applying STRICT.
 
@@ -53,7 +53,7 @@ path by an ALLOW rule, or serving the JWKS another way. Decide before applying S
 - [ ] Add both files to `make deploy` in the Makefile, after `postgres-authorization.yaml`
 - [ ] Apply, then restart istiod so it fetches the JWKS again (`make wake` covers this)
 - [ ] Add smoke-test checks: a mesh pod (spring-app) cannot reach Keycloak's service directly, and a plaintext call is refused
-- [ ] Update `doc/istio-request-flow.md` (section 4.7b) and backup slide 31, click 6: from "next steps" to "applied"
+- [ ] Update `doc/istio-request-flow.md` (section 4.7b) and backup slide 32, click 6: from "next steps" to "applied"
 
 ### How to verify
 

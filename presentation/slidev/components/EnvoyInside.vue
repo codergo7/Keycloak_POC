@@ -313,7 +313,7 @@ const API: ApiStep[] = [
     cap: 'rbac at the sidecar: the rule for /api/user needs the realm role user, and alice has it.' },
   { a: 6, path: '/api/user', auth: 'ok', spoof: false,
     col2: [{ c: 'call', cls: 'ok', t: '← 200 OK from Spring' }],
-    p: 'Spring did not verify the token itself, and the only X-Auth-Request-User it saw came from the token: alice, not admin.',
+    p: 'Spring did not check the token; its sidecar already did. The X‑Auth‑Request‑User it reads is alice’s real ID, written by the sidecar from the token. The fake admin header never got this far.',
     cap: 'Spring receives the request and answers 200.' },
   { a: 2, fail: 2, failText: '✕ 403', v: { 1: 'no token' }, path: '/api/user', auth: 'none', spoof: false,
     col2: [

@@ -4,12 +4,16 @@
 // Envoy config, and the proxies verify offline. Then the refresh timer, a failed fetch and
 // key rotation. Values measured on the POC (Istio 1.31, Keycloak realm "demo"); the
 // failure intervals are constants in istiod's jwks_resolver.go. Click 2 (issuer) keeps the
-// click-1 stage and adds the issuer match. The slide needs `clicks: 9`.
+// click-1 stage and adds the issuer match. Clicks 6–9 zoom into jwt_authn (JwtAuthnZoom).
+// The slide needs `clicks: 13`.
 import { computed } from 'vue'
 import { useSlideContext } from '@slidev/client'
 
 const { $clicks } = useSlideContext()
-const raw = computed(() => Math.min(Math.max($clicks.value, 0), 9))
+const c = computed(() => Math.min(Math.max($clicks.value, 0), 13))
+// clicks 6–9: zoom into jwt_authn (steps 1–4); the stage underneath stays on 'checked offline'
+const zoom = computed(() => (c.value >= 6 && c.value <= 9 ? c.value - 5 : 0))
+const raw = computed(() => (c.value <= 5 ? c.value : c.value >= 10 ? c.value - 4 : 5))
 const iss = computed(() => raw.value === 2)
 // s = the stage without the issuer click: 0 1 [1] 2 3 4 5 6 7 8
 const s = computed(() => (raw.value <= 1 ? raw.value : raw.value === 2 ? 1 : raw.value - 1))
@@ -90,6 +94,9 @@ const cur = computed(() => (iss.value ? issPanel : panels[s.value]))
 
 <template>
   <div class="jf">
+    <Transition name="zoom" mode="out-in">
+    <JwtAuthnZoom v-if="zoom" key="zoom" :step="zoom" />
+    <div v-else key="flow">
     <div class="stage">
       <!-- Keycloak -->
       <div class="box kc" :class="{ on: kcOn }">
@@ -155,6 +162,8 @@ const cur = computed(() => (iss.value ? issPanel : panels[s.value]))
         Two RequestAuthentications, one at the gateway and one at the sidecar, both check Keycloak’s signature.
         Neither one talks to Keycloak. Click to follow the keys.
       </div>
+    </Transition>
+    </div>
     </Transition>
   </div>
 </template>
@@ -233,6 +242,10 @@ const cur = computed(() => (iss.value ? issPanel : panels[s.value]))
 .sum { margin-top: 0.7rem; display: grid; grid-template-columns: 1fr 1fr; column-gap: 1.4rem; }
 .sum .label { grid-column: 1 / -1; font: 700 0.55rem 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.2rem; }
 .intro { margin-top: 0.7rem; font-size: 0.8rem; line-height: 1.5; color: #4a5568; }
+.zoom-enter-active { transition: all 0.55s cubic-bezier(0.2, 0.8, 0.2, 1); transform-origin: 88% 30%; }
+.zoom-leave-active { transition: all 0.3s ease; transform-origin: 88% 30%; }
+.zoom-enter-from { opacity: 0; transform: scale(0.25); }
+.zoom-leave-to { opacity: 0; transform: scale(0.96); }
 .sw-enter-active, .sw-leave-active { transition: all 0.25s ease; }
 .sw-enter-from { opacity: 0; transform: translateY(8px); }
 .sw-leave-to { opacity: 0; }
