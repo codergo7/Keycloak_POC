@@ -442,7 +442,7 @@ clicks: 13
 
 <div class="kicker">Authorization code flow · recap</div>
 
-# What the browser saw, and what it never saw
+# The browser gets a cookie, never a readable token
 
 <div class="grid grid-cols-2 gap-5 mt-4">
   <div class="card !p-5" v-motion :initial="{ opacity: 0, x: -30 }" :enter="{ opacity: 1, x: 0 }">
@@ -462,7 +462,7 @@ clicks: 13
 </div>
 
 <!--
-Let's summarize what the browser saw. It saw the redirects, the login page, a one-time code and an encrypted cookie. It never saw the client secret or any call between the pods, and it only holds the tokens encrypted, inside the cookie.
+So the browser gets a cookie, never a readable token. It saw the redirects, the login page, a one-time code and an encrypted cookie. It never saw the client secret or any call between the pods, and it only holds the tokens encrypted, inside the cookie.
 
 [click] Keycloak checked the password and issued the tokens.
 [click] OAuth2-Proxy exchanged the code for the tokens and now keeps the session.
