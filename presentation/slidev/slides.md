@@ -207,20 +207,25 @@ These are the Keycloak terms that I will use during the talk.
 -->
 
 ---
+clicks: 7
+---
 
 <div class="kicker">OAuth2-Proxy · OIDC client for the browser</div>
 
 # It turns a login into a session cookie
 
-<div class="grid grid-cols-[1.25fr_1fr] gap-6 mt-4">
+<div class="stack mt-4">
+<TokenCookie />
+
+<div v-click="4" class="grid grid-cols-[1.25fr_1fr] gap-6">
 <div class="grid grid-cols-2 gap-3">
-  <div v-click="1" class="card"><h3>OIDC client</h3><p>Registered in Keycloak as the <code>oauth2-proxy</code> client, with a client secret.</p></div>
-  <div v-click="2" class="card"><h3>Session cookie</h3><p><code>_oauth2_proxy</code>, encrypted. Refreshed on the first request after 4 minutes, expires after 8 hours.</p></div>
-  <div v-click="3" class="card"><h3>External authorizer</h3><p>Istio asks it “is this request logged in?” It answers yes, or redirects to login.</p></div>
-  <div v-click="4" class="card"><h3>Identity headers</h3><p>Returns X-Auth-Request-User, -Email and the access token, for Istio to copy into the request.</p></div>
+  <div v-click="4" class="card"><h3>OIDC client</h3><p>Registered in Keycloak as the <code>oauth2-proxy</code> client, with a client secret.</p></div>
+  <div v-click="5" class="card"><h3>Session cookie</h3><p><code>_oauth2_proxy</code>, encrypted. Refreshed on the first request after 4 minutes, expires after 8 hours.</p></div>
+  <div v-click="6" class="card"><h3>External authorizer</h3><p>Istio asks it “is this request logged in?” It answers yes, or redirects to login.</p></div>
+  <div v-click="7" class="card"><h3>Identity headers</h3><p>Returns X-Auth-Request-User, -Email and the access token, for Istio to copy into the request.</p></div>
 </div>
 
-```yaml {all|1-2|3-4|5-6|7-9}{at:1}
+```yaml {all|1-2|3-4|5-6|7-9}{at:4}
 --provider=keycloak-oidc
 --client-id=oauth2-proxy
 --cookie-refresh=4m
@@ -232,11 +237,23 @@ These are the Keycloak terms that I will use during the talk.
 --pass-authorization-header=true
 ```
 </div>
+</div>
+
+<style>
+.stack { display: grid; }
+.stack > * { grid-area: 1 / 1; }
+</style>
 
 <!--
-OAuth2-Proxy turns a login into a session cookie. It has four jobs.
+OAuth2-Proxy turns a login into a session cookie. Let's see what that means.
 
-[click] First, it is an OpenID Connect client, registered in Keycloak.
+[click] 1. When alice logs in, OAuth2-Proxy swaps the login code for tokens on the back channel. Keycloak gives it three tokens. The ID token says who logged in. The access token is for the APIs. The refresh token gets new tokens when they expire, and only Keycloak accepts it.
+
+[click] 2. OAuth2-Proxy packs the three tokens into one session, together with her user name, email and expiry. It compresses the session, encrypts it with its cookie secret, and signs it.
+
+[click] 3. The browser gets one cookie, called underscore oauth2 proxy. It is HttpOnly, so JavaScript can't read it, and it is encrypted, so even alice can't see the tokens inside. The browser just sends it back with every request.
+
+[click] So OAuth2-Proxy has four jobs. First, it is an OpenID Connect client, registered in Keycloak.
 
 [click] Second, it keeps the session in an encrypted cookie. When the cookie is older than 4 minutes, it refreshes the tokens on the next request.
 
@@ -317,13 +334,13 @@ Istio enforces everything with four kinds of resources.
 <!--
 A JWT has three parts: a header, a payload and a signature. This is a shortened version of alice's access token.
 
-[click] iss, aud and azp tell us who issued the token, who it is for, and which client asked for it.
+[click] iss, aud and azp (authorized party) tell us who issued the token, who it is for, and which client asked for it.
 
 [click] The roles and groups are the claims that our access rules check.
 
 [click] exp makes the token short-lived. The signature means nobody can change it: Istio verifies it with Keycloak's public keys.
 
-[click] One login actually gives three tokens. The access token is for calling APIs, the ID token says who logged in, and the refresh token gets new tokens.
+[click] One login actually gives three tokens: An access token, an ID token, and a refresh token.
 -->
 
 ---

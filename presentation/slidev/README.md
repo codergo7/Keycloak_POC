@@ -17,6 +17,7 @@ Press `→` / space to step through clicks; `o` shows the slide overview.
 |---|---|---|
 | `components/ArchDiagram.vue` | 4 | The POC architecture: kind cluster, the istio-system, identity, spring-api and reports-api namespaces, and the links between them (ingress, ext_authz, back channel, routes, istiod config and JWKS) |
 | `components/ComponentsFlow.vue` | 5 | The four components, one per click, with what each hands to the next (signed tokens, identity headers + token, a checked request); click 5 shows the one-line summary |
+| `components/TokenCookie.vue` | 7 (clicks 1–3) | OAuth2-Proxy turns Keycloak's three tokens (ID, access, refresh) into one `_oauth2_proxy` cookie: pack, LZ4, AES-GCM with the cookie-secret, HMAC; then the cookie's three parts and flags, measured on the cluster. Fades out at click 4 for the four cards |
 | `components/BackupIndex.vue` | 23 (backup) | Index of the backup slides by topic; each entry links to its slide by `routeAlias` and shows its current number |
 | `components/LoginPaths.vue` | 28 (backup) | Who talks to Keycloak during login: the browser via the gateway (front channel), OAuth2-Proxy pod to pod (back channel), and Keycloak's two names |
 | `components/DbPolicy.vue` | 32 (backup) | Who can log in to Postgres, before and after `postgres-allow-keycloak`: service-account identities, the TCP (network rbac) filter, and next steps |
