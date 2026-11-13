@@ -71,7 +71,7 @@ I prepared more slides than fit in our time, so I left some out. They're at the 
 <p class="remember mt-6">The goal: <b>security out of the application.</b> The platform decides who you are and which endpoints you may call; the app keeps the rules that need its own data.</p>
 
 <!--
-The goal is the line at the bottom: security out of the application. The platform decides who you are and which endpoints you may call. Not everything moves out, though. A rule like "only the owner may edit this report" needs the application's data, so it stays in the app. We'll come back to that at the end.
+The goal is: security out of the application. The platform decides who you are and which endpoints you may call. Not everything moves out, though. A rule like "only the owner may edit this report" needs the application's data, so it stays in the app. We'll come back to that at the end.
 
 I won't go deep into each tool. I'll summarize each one, and then show how they work together.
 
@@ -136,9 +136,9 @@ This is what I built: one kind cluster on my laptop, with four namespaces.
 
 [click] The identity namespace contains Keycloak, which holds our realm, called demo, and its users. Keycloak stores its data in Postgres.
 
-[click] OAuth2-Proxy runs in the same namespace. The gateway asks it whether a browser request to app.localhost is logged in, and this check is called ext_authz. During login, OAuth2-Proxy also talks directly to Keycloak over a private connection that we call the back channel.
+[click] OAuth2-Proxy runs in the same namespace. The gateway asks it whether a browser request is logged in, and this check is called ext_authz (I'll explain it later). During login, OAuth2-Proxy also calls Keycloak directly, pod to pod inside the cluster, never through the browser. We call that the back channel.
 
-[click] Each application has its own namespace, with an Envoy sidecar next to it. Spring Boot serves the /api paths, and a small FastAPI service serves /reports. Each namespace is named after its Keycloak client, which is also the audience in the token: spring-api and reports-api. Both apps can be reached through the app host and the api host.
+[click] Each application has its own namespace, with an Envoy sidecar next to it. Spring Boot serves the /api paths, and a small FastAPI service serves /reports.  Both apps can be reached through the app host and the api host.
 
 [click] Finally, istiod is the Istio control plane. It sends routes and policies to the gateway and to both sidecars, and it fetches Keycloak's public keys so that the proxies can verify tokens.
 -->
@@ -162,7 +162,7 @@ Each of the four components has one job.
 
 [click] OAuth2-Proxy runs the login for browsers. It gets the tokens from Keycloak and keeps the session in a cookie.
 
-[click] Istio enforces the rules. OAuth2-Proxy hands it the identity headers and the token, and Istio checks them at the gateway and again at each pod.
+[click] Istio enforces the rules. OAuth2-Proxy hands it the identity headers and the token, and Istio checks them at the gateway and again at each app's sidecar.
 
 [click] And the applications, Spring Boot and FastAPI, just do their business job. They get a request that has already been checked, so they need no login code and no token code.
 
