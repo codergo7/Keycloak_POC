@@ -562,7 +562,7 @@ clicks: 12
 <EnvoyInside />
 
 <!--
-Istio doesn't run our rules itself. Each Istio resource becomes a filter in Envoy, and the filters always run in the same order. Let's follow alice's browser request to /api/headers through both proxies.
+Let's take the browser path first, and look inside the proxies. When I say Istio checks the request, it's really Envoy doing the work: each Istio resource becomes a filter, and the filters always run in the same order. Let's follow alice's browser request to /api/headers through both proxies.
 
 [click] 1. The first filter at the gateway is ext_authz. It comes from the AuthorizationPolicy with action CUSTOM. Envoy pauses the request and asks OAuth2-Proxy. OAuth2-Proxy checks the cookie, says yes, and adds the identity headers, including the access token.
 
@@ -572,7 +572,7 @@ Istio doesn't run our rules itself. Each Istio resource becomes a filter in Envo
 
 [click] 4. The router applies the VirtualService. It removes the cookie and sends the request over mTLS to the Spring pod.
 
-[click] 5. Now we're in Spring's sidecar. Its jwt_authn filter, from the RequestAuthentication keycloak-jwt, finds the token in the X-Auth-Request-Access-Token header.
+[click] 5. Now we're in Spring's sidecar. Its jwt_authn filter, from the sidecar's RequestAuthentication, finds the token in the X-Auth-Request-Access-Token header.
 
 [click] 6. It reads the key ID from the token header, takes the matching key from Keycloak's public keys, and checks the signature.
 
