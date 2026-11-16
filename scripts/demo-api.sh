@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Live demo of API access (api.localhost): the eight checks from the "Demo: API access"
+# Live demo of API access (api.localhost): the seven checks from the "Demo: API access"
 # slide, one at a time, with the command, the result and what it proves.
 #
 #   make demo-api            press Enter to run each request and to show the next check
 #   make demo-api AUTO=1     run straight through
 #
-# Step 8 adds bob to /finance/managers through the Keycloak admin API and
+# Step 7 adds bob to /finance/managers through the Keycloak admin API and
 # removes him again at the end, so the demo can be repeated.
 set -uo pipefail
 
@@ -67,11 +67,37 @@ expect() {
   echo "  → HTTP $(color_code "$CODE")  ${DIM}${BODY:0:70}${R}"
   if [[ "$CODE" == "$expected" && ( -z "$text" || "$BODY" == *"$text"* ) ]]; then
     echo "  ${GREEN}✔ expected $expected${R}  $why"
-    PASSED=$((PASSED + 1))
+    PASSED=$((PASSED + 1)); LAST_OK=1
   else
     echo "  ${RED}✘ expected $expected${text:+ with \"$text\"}, got $CODE${R}  $why"
-    FAILED=$((FAILED + 1))
+    FAILED=$((FAILED + 1)); LAST_OK=0
   fi
+}
+
+# flow APP S1..S6: the filters this request went through, one coloured row.
+# Stages: gateway ext_authz, jwt_authn, rbac, router; sidecar jwt_authn, rbac.
+# Each S is ok (✓ passed), none (○ no token, nothing to check), skip (– no policy
+# for this host), fail:CODE (✕ stopped here) or - (not reached).
+# Printed only when the check behaved as expected, so it never contradicts the result.
+flow() {
+  [[ "${LAST_OK:-0}" == 1 ]] || return 0
+  local app="$1"; shift
+  local names=(ext_authz jwt_authn rbac router jwt_authn rbac)
+  local out="  ${DIM}filters${R}  ${B}gateway${R} " i st seg reached=1
+  for i in 0 1 2 3 4 5; do
+    st="$1"; shift
+    if (( i == 4 )); then out+=" ${DIM}┃${R} ${B}sidecar${R} "; elif (( i > 0 )); then out+=" ${DIM}›${R} "; fi
+    case "$st" in
+      ok)     seg="${GREEN}${names[i]} ✓${R}" ;;
+      none)   seg="${names[i]} ${YELLOW}○${R}" ;;
+      skip)   seg="${DIM}${names[i]} –${R}" ;;
+      fail:*) seg="${RED}${B}${names[i]} ✕ ${st#fail:}${R}"; reached=0 ;;
+      *)      seg="${DIM}${names[i]}${R}"; reached=0 ;;
+    esac
+    out+="$seg"
+  done
+  if (( reached )); then out+=" ${DIM}┃${R} ${GREEN}${B}${app} ✓${R}"; else out+=" ${DIM}┃ ${app}${R}"; fi
+  echo "$out"
 }
 
 # print the claims that matter for this demo, from a JWT
@@ -131,7 +157,9 @@ preflight() {
   fi
 }
 
-echo "${B}API access · api.localhost · eight checks with curl${R}"
+echo "${B}API access · api.localhost · seven checks with curl${R}"
+echo "  ${DIM}Under each result: the Envoy filters the request went through.${R}"
+echo "  ${GREEN}✓${R} passed   ${YELLOW}○${R} no token, nothing to check   ${DIM}–${R} no policy for this host   ${RED}${B}✕${R} stopped here   ${DIM}grey: not reached${R}"
 echo "${DIM}Expected result first, then the real answer from the cluster.${R}"
 preflight
 
@@ -151,6 +179,7 @@ show_cmd "curl $API/api/public"
 pause
 run "$API/api/public"
 expect 200 "anyone may call it"
+flow Spring skip none ok ok none ok
 
 # ---------------------------------------------------------------------------
 step "2. Protected endpoint, no token" \
@@ -172,6 +201,7 @@ show_cmd "curl $API/api/user"
 pause
 run "$API/api/user"
 expect 403 "no token → no principal → ${B}RBAC: access denied${R}" "RBAC: access denied"
+flow Spring skip none fail:403 - - -
 
 # ---------------------------------------------------------------------------
 ALICE="$(token alice)" || exit 1
@@ -190,14 +220,16 @@ show_cmd "curl -H \"Authorization: Bearer \${ALICE}x\" $API/api/user"
 pause
 run -H "Authorization: Bearer ${ALICE}x" "$API/api/user"
 expect 401 "the JWT check rejects it before any policy runs"
+flow Spring skip fail:401 - - - -
 
 # ---------------------------------------------------------------------------
-step "4. alice: user yes, admin no" \
-  "alice's token is valid, so she has a requestPrincipal and passes the gateway rule from step 2." \
+BOB="$(token bob)" || exit 1
+step "4. bob: user yes, developer no" \
+  "bob's token is valid, so he has a requestPrincipal and passes the gateway rule from step 2." \
   "At Spring's sidecar each rule needs the principal ${B}and${R} a realm role in the token (${B}when${R})." \
-  "alice has ${B}user${R} and ${B}developer${R}, but not ${B}admin${R}."
-principal "$ALICE"
-claims "$ALICE"
+  "bob has ${B}user${R}, but not ${B}developer${R}."
+principal "$BOB"
+claims "$BOB"
 snippet k8s/app/auth-app.yaml "AuthorizationPolicy spring-workload-authorization (ALLOW)" <<'YAML'
 # User role
 - from:
@@ -210,66 +242,32 @@ snippet k8s/app/auth-app.yaml "AuthorizationPolicy spring-workload-authorization
   when:
     - key: request.auth.claims[realm_access][roles]
       values: ["user"]
-# Admin role
+# Developer role
 - from:
     - source:
         requestPrincipals: ["*"]
   to:
     - operation:
         methods: ["GET"]
-        paths: ["/api/admin"]
+        paths: ["/api/headers"]
   when:
     - key: request.auth.claims[realm_access][roles]
-      values: ["admin"]
+      values: ["developer"]
 YAML
-show_cmd "curl -H \"Authorization: Bearer \$ALICE\" $API/api/user"
+show_cmd "BOB=\$(make -s token-bob)"
+show_cmd "curl -H \"Authorization: Bearer \$BOB\" $API/api/user"
 pause
-run -H "Authorization: Bearer $ALICE" "$API/api/user"
+run -H "Authorization: Bearer $BOB" "$API/api/user"
 expect 200 "role user is enough for /api/user"
-show_cmd "curl -H \"Authorization: Bearer \$ALICE\" $API/api/admin"
+flow Spring skip ok ok ok ok ok
+show_cmd "curl -H \"Authorization: Bearer \$BOB\" $API/api/headers"
 pause
-run -H "Authorization: Bearer $ALICE" "$API/api/admin"
-expect 403 "valid token, but no admin role" "RBAC: access denied"
+run -H "Authorization: Bearer $BOB" "$API/api/headers"
+expect 403 "valid token, but no developer role" "RBAC: access denied"
+flow Spring skip ok ok ok ok fail:403
 
 # ---------------------------------------------------------------------------
-step "5. A fake identity header" \
-  "Spring reads ${B}X-Auth-Request-User${R} to know who the caller is. What if a script sends its own?" \
-  "alice sends ${B}X-Auth-Request-User: admin${R} to /api/headers, which lists every header Spring receives." \
-  "The gateway route removes it, and Spring's sidecar writes the real value ${B}from the verified token${R}."
-snippet k8s/app/auth-app.yaml "RequestAuthentication keycloak-jwt" <<'YAML'
-jwtRules:
-  - issuer: http://keycloak.localhost:8080/realms/demo
-    audiences:
-      - spring-api
-    outputClaimToHeaders:
-      - header: x-auth-request-user
-        claim: sub
-      - header: x-auth-request-email
-        claim: email
-YAML
-ALICE_SUB="$(python3 -c 'import base64,json,sys
-p = sys.argv[1].split(".")[1]
-print(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)))["sub"])' "$ALICE")"
-show_cmd "curl -H \"Authorization: Bearer \$ALICE\" -H 'X-Auth-Request-User: admin' $API/api/headers"
-pause
-run -H "Authorization: Bearer $ALICE" -H 'X-Auth-Request-User: admin' "$API/api/headers"
-SEEN="$(printf '%s' "$BODY" | python3 -c 'import json,sys
-try: h = json.load(sys.stdin)
-except Exception: print("unreadable response"); sys.exit()
-h = h.get("headers", h) if isinstance(h, dict) else {}
-print(h.get("x-auth-request-user", "none"))')"
-echo "  → HTTP $(color_code "$CODE")  X-Auth-Request-User at Spring: ${B}${SEEN:-none}${R}  (alice's user ID: $ALICE_SUB)"
-if [[ "$CODE" == 200 && "$SEEN" == "$ALICE_SUB" ]]; then
-  echo "  ${GREEN}✔ expected 200, with alice's real ID instead of admin${R}  the identity comes from the token, not from the client"
-  PASSED=$((PASSED + 1))
-else
-  echo "  ${RED}✘ expected 200 with X-Auth-Request-User = $ALICE_SUB, got $CODE ($SEEN)${R}"
-  FAILED=$((FAILED + 1))
-fi
-
-# ---------------------------------------------------------------------------
-BOB="$(token bob)" || exit 1
-step "6. bob without scope=reports" \
+step "5. bob without scope=reports" \
   "bob has the reports viewer role, but this token was ${B}not issued for the reports API${R}:" \
   "aud contains only spring-api."
 claims "$BOB"
@@ -282,15 +280,15 @@ jwtRules:
 YAML
 echo "  The token is signed correctly, but its aud does not contain ${B}reports-api${R}:"
 echo "  the sidecar rejects it ${B}before${R} any requestPrincipal is set or any policy runs."
-show_cmd "BOB=\$(make -s token-bob)"
 show_cmd "curl -H \"Authorization: Bearer \$BOB\" $API/reports"
 pause
 run -H "Authorization: Bearer $BOB" "$API/reports"
 expect 403 "wrong audience → ${B}Audiences in Jwt are not allowed${R}" "Audiences in Jwt are not allowed"
+flow FastAPI skip ok ok ok fail:403 -
 
 # ---------------------------------------------------------------------------
 BOB_R="$(token bob reports)" || exit 1
-step "7. bob with scope=reports" \
+step "6. bob with scope=reports" \
   "Same user, new token, asked for ${B}scope=reports${R}: aud now includes reports-api."
 principal "$BOB_R"
 claims "$BOB_R"
@@ -324,13 +322,15 @@ show_cmd "curl -H \"Authorization: Bearer \$BOB_R\" $API/reports"
 pause
 run -H "Authorization: Bearer $BOB_R" "$API/reports"
 expect 200 "viewer may read reports"
+flow FastAPI skip ok ok ok ok ok
 show_cmd "curl -X POST -H \"Authorization: Bearer \$BOB_R\" -H 'Content-Type: application/json' -d '{\"title\":\"Q4 forecast\"}' $API/reports"
 pause
 run -X POST -H "Authorization: Bearer $BOB_R" -H 'Content-Type: application/json' -d '{"title":"Q4 forecast"}' "$API/reports"
 expect 403 "creating needs ${B}editor${R}, bob is only a viewer" "RBAC: access denied"
+flow FastAPI skip ok ok ok ok fail:403
 
 # ---------------------------------------------------------------------------
-step "8. Add bob to /finance/managers" \
+step "7. Add bob to /finance/managers" \
   "In the admin console: ${B}Users → bob → Groups → Join group → finance/managers${R}." \
   "The script does the same through the Keycloak admin API, then asks for a new token."
 ADMIN_AT="$(curl -sS -d client_id=admin-cli -d username=admin -d password=admin -d grant_type=password \
@@ -353,6 +353,7 @@ show_cmd "curl -X POST -H \"Authorization: Bearer \$BOB_R\" -H 'Content-Type: ap
 pause
 run -X POST -H "Authorization: Bearer $BOB_R2" -H 'Content-Type: application/json' -d '{"title":"Q4 forecast"}' "$API/reports"
 expect 201 "the group gave bob ${B}editor${R}: only a claim changed, no code, no redeploy"
+flow FastAPI skip ok ok ok ok ok
 
 # ---------------------------------------------------------------------------
 pause "press Enter for the summary"

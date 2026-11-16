@@ -18,6 +18,8 @@ const wires = [
   { d: 'M385 250 V304 H640 V250 H670', at: 4 },
   { d: 'M265 240 V186', at: 5, cls: 'purple' },
   { d: 'M345 250 H375 V150 H665 V120', at: 5, cls: 'purple' },
+  { d: 'M300 296 V313 H765 V280', at: 5, cls: 'purple' },
+  { d: 'M580 313 V280', at: 5, cls: 'purple' },
 ]
 
 const labels = [
@@ -28,6 +30,7 @@ const labels = [
   { t: 'app · api routes', x: 440, y: 290, at: 4 },
   { t: 'config', x: 272, y: 204, at: 5, cls: 'purple' },
   { t: 'JWKS keys', x: 672, y: 128, at: 5, cls: 'purple' },
+  { t: 'config → sidecars', x: 650, y: 290, at: 5, cls: 'purple' },
 ]
 
 const notes = [

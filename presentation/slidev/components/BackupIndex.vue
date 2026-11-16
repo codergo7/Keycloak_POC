@@ -10,10 +10,12 @@ const groups = [
     { a: 'b-claims', l: 'Every endpoint and the claim it needs' },
     { a: 'b-six', l: 'Six requests, where each one stops' },
     { a: 'b-filters', l: 'From Istio YAML to envoy.filters.http.*' },
+    { a: 'b-rbac', l: 'How an AuthorizationPolicy decides' },
     { a: 'b-debug', l: 'How to debug a 401 or 403' },
   ] },
   { t: 'Browser access and security', cls: 'orange', items: [
     { a: 'b-login', l: 'Who talks to Keycloak during login?' },
+    { a: 'b-recap', l: 'What the browser sees, and what it never sees' },
     { a: 'b-spoof', l: 'Can someone fake who they are?' },
     { a: 'b-policy', l: 'The CUSTOM policy: when OAuth2-Proxy is asked' },
     { a: 'b-headers', l: 'Every sensitive header, hop by hop' },
