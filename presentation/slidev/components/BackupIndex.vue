@@ -18,6 +18,7 @@ const groups = [
     { a: 'b-recap', l: 'What the browser sees, and what it never sees' },
     { a: 'b-spoof', l: 'Can someone fake who they are?' },
     { a: 'b-policy', l: 'The CUSTOM policy: when OAuth2-Proxy is asked' },
+    { a: 'b-hosts', l: 'Why two host names: app and api' },
     { a: 'b-headers', l: 'Every sensitive header, hop by hop' },
     { a: 'b-db', l: 'Who can reach the database?' },
   ] },

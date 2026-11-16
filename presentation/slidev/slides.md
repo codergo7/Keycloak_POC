@@ -76,7 +76,13 @@ At the end of this talk, I'll show exactly that, live.
 <p class="remember mt-6">The goal: <b>security out of the application.</b> The platform decides who you are and which endpoints you may call; the app keeps the rules that need its own data.</p>
 
 <!--
-The goal is: security out of the application. The platform decides who you are and which endpoints you may call. Not everything moves out, though. A rule like "only the owner may edit this report" needs the application's data, so it stays in the app. We'll come back to that at the end.
+The goal is: security out of the application. The platform decides who you are and which endpoints you may call. 
+
+Not everything moves out, though. 
+
+A rule like "only the owner may edit this report" needs the application's data, so it stays in the app. 
+
+We'll come back to that at the end.
 
 I won't go deep into each tool. I'll summarize each one, and then show how they work together.
 
@@ -117,11 +123,23 @@ I won't go deep into each tool. I'll summarize each one, and then show how they 
 </div>
 
 <!--
-So, the theory first, starting with two words that sound almost the same: authentication and authorization. Authentication answers one question: who are you? You claim an identity, and then you prove it, for example with a password. If that fails, the answer is 401: meaning we don't know who you are.
+So, the theory first, starting with two words that sound almost the same: authentication and authorization. 
 
-[click] Authorization comes next: what are you allowed to do? The answer depends on your roles, scopes and claims. If authorization fails, the answer is 403: we know who you are, but you can't do this.
+Authentication answers one question: who are you? 
 
-The order never changes. We can't decide what you may do before we know who you are.
+You claim an identity, and then you prove it, for example with a password. 
+
+If that fails, the answer is 401: meaning we don't know who you are.
+
+[click] Authorization comes next: what are you allowed to do? 
+
+The answer depends on your roles, scopes and claims. 
+
+If authorization fails, the answer is 403: we know who you are, but you can't do this.
+
+The order never changes. 
+
+We can't decide what you may do before we know who you are.
 -->
 
 ---
@@ -141,7 +159,9 @@ So who answers those two questions in our setup? This is what I built: one kind 
 
 [click] The identity namespace contains Keycloak, which holds our realm, called demo. Keycloak stores its data in Postgres.
 
-[click] OAuth2-Proxy runs in the same namespace. The gateway asks it whether a browser request is logged in, and this check is called ext_authz (I'll explain it later). During login, OAuth2-Proxy also calls Keycloak directly, pod to pod inside the cluster, never through the browser. We call that the back channel.
+[click] OAuth2-Proxy runs in the same namespace. The gateway asks it whether a browser request is logged in, and this check is called ext_authz (I'll explain it later). 
+
+During login, OAuth2-Proxy also calls Keycloak directly, pod to pod inside the cluster, never through the browser. We call that the back channel.
 
 [click] Each application has its own namespace, with an Envoy sidecar next to it. Spring Boot serves the /api paths, and FastAPI serves /reports.  Both apps can be reached through the app host and the api host.
 
@@ -200,13 +220,18 @@ Let's look at each one, starting with Keycloak. These are the terms I'll use dur
 
 [click] A realm is an isolated space with its own users, roles and clients. Ours is called demo.
 
-[click] A client is an application that is registered in Keycloak. Some clients ask for tokens: oauth2-proxy for browsers and cli-client for scripts. The other clients are the APIs that the tokens are for: spring-api and reports-api. They never log anyone in. They give the token its audience, and reports-api also holds its own roles.
+[click] A client is an application that is registered in Keycloak. Some clients ask for tokens: for example oauth2-proxy and cli-client. 
+The other clients are the APIs that the tokens are for: spring-api and reports-api. 
 
-[click] Our users are alice, bob and admin. alice is in engineering, bob is in finance, and admin is in admins.
+They never log anyone in. They give the token its audience.
 
-[click] A role is a permission label. Realm roles such as developer and admin are shared by every application, while client roles belong to one API, like viewer and editor of reports-api. A composite role contains other roles, so editor also includes viewer.
+[click] Our users are alice, bob and admin. alice is in the engineering group, bob is in finance, and admin is in admins.
 
-[click] A client scope is a named set of claims that a client can request. When a client asks for the reports scope, the token gets reports-api in its audience.
+[click] A role is a permission label. Realm roles such as developer and admin are shared by every application, while client roles belong to one API, like viewer and editor of reports-api. 
+
+A composite role contains other roles, so editor also includes viewer.
+
+[click] A client scope is a named set of claims that a client can request. For example: When a client asks for the reports scope, the token gets reports-api in its audience.
 
 [click] Groups can also carry roles. alice gets the developer role from the engineering group, and bob gets the reports viewer role from the finance group.
 -->
@@ -408,7 +433,7 @@ clicks: 13
 <!--
 [click] 1. Alice opens the application, and her browser has no cookie yet.
 
-[click] 2. The gateway asks OAuth2-Proxy whether this request is logged in, and there is no session.
+[click] 2. The gateway asks OAuth2-Proxy whether this request is logged in.
 
 [click] 3. OAuth2-Proxy redirects the browser to Keycloak.
 
@@ -416,21 +441,22 @@ clicks: 13
 
 [click] 5. Alice types her password. This is the only moment when she really authenticates.
 
-[click] 6. Keycloak sends the browser back to OAuth2-Proxy with a one-time code.
+[click] 6. Keycloak sends the browser back to OAuth2-Proxy with a one-time code called authorization code.
 
 [click] 7. The code arrives at OAuth2-Proxy.
 
 [click] 8. OAuth2-Proxy then sends the code and its client secret directly to Keycloak, server to server.
 
-[click] 9. Keycloak answers with the access token, the ID token and the refresh token, directly to OAuth2-Proxy, on the back channel.
+[click] 9. Keycloak answers with the tokens, directly to OAuth2-Proxy, on the back channel.
 
-[click] 10. OAuth2-Proxy encrypts the tokens into a cookie and sends Alice back to her page.
+[click] 10. OAuth2-Proxy encrypts the tokens into a cookie and sends it to the Alice's browser.
 
 [click] 11. From now on, every request from Alice carries this cookie.
 
 [click] 12. OAuth2-Proxy decrypts the cookie and answers 200 with the identity headers, without calling Keycloak.
 
 [click] 13. The gateway removes the cookie and forwards the request with the identity headers, and Spring's sidecar checks the access token again.
+
 So Alice is logged in. But her token only lives 5 minutes, so what happens next?
 -->
 
@@ -445,17 +471,26 @@ clicks: 8
 <RefreshLoop />
 
 <!--
-Alice's access token lives only 5 minutes, and her Keycloak session ends after 30 idle minutes. Still, she notices nothing while she keeps working. Here's why.
+Alice's access token lives only 5 minutes, and her Keycloak session ends after 30 idle minutes. Still, she notices nothing while she keeps working.
+
+Here's why.
 
 [click] 1. Alice clicks something, more than 4 minutes after the last refresh.
+
 [click] 2. OAuth2-Proxy sees that the cookie is older than 4 minutes, so it refreshes first.
+
 [click] 3. It sends the refresh token to Keycloak on the back channel. The browser never sees it.
+
 [click] 4. The session is still alive, so Keycloak returns fresh tokens and resets the idle timer.
+
 [click] 5. OAuth2-Proxy sets a new cookie, and the request continues. Alice notices nothing.
 
 Now the same request after 45 idle minutes.
+
 [click] 6. Keycloak ended the session after 30 idle minutes, so it refuses the refresh token.
+
 [click] 7. OAuth2-Proxy deletes its cookie and sends the browser to Keycloak.
+
 [click] 8. The Keycloak session is gone too, so Alice has to log in again.
 -->
 
@@ -488,11 +523,17 @@ class: navy
 </style>
 
 <!--
-Now our POC. It has two ways in, to the same applications.
+Now our POC. 
 
-[click] Browser access, on app.localhost, is for people. The gateway asks OAuth2-Proxy, and OAuth2-Proxy recognizes the person by the session cookie.
+It has two ways in, to the same applications.
 
-[click] API access, on api.localhost, is for scripts that send a bearer token. The gateway and the app's sidecar both check the token, and the roles in it decide what the caller may do.
+[click] Browser access, on app.localhost, is for people. 
+
+The gateway asks OAuth2-Proxy, and OAuth2-Proxy recognizes the person by the session cookie.
+
+[click] API access, on api.localhost, is for scripts that send a bearer token. 
+
+The gateway and the app's sidecar both check the token, and the roles in it decide what the caller may do.
 
 [click] Both paths end the same way: claims signed by Keycloak, checked by Istio, before any application sees the request.
 -->
@@ -508,23 +549,47 @@ clicks: 11
 <EnvoyInside />
 
 <!--
-Let's take the browser path first, and look inside the proxies. When I say Istio checks the request, it's really Envoy doing the work: each Istio resource becomes a filter, and the filters always run in the same order. Let's follow alice's browser request to /api/headers through both proxies.
+Let's take the browser path first, and look inside the proxies. 
 
-[click] 1. The first filter at the gateway is ext_authz. It comes from the AuthorizationPolicy with action CUSTOM. Envoy pauses the request and asks OAuth2-Proxy. OAuth2-Proxy checks the cookie, says yes, and adds the identity headers, including the access token.
+When I say Istio checks the request, it's really Envoy doing the work: each Istio resource becomes a filter in Envoy proxies, and the filters always run in the same order. 
 
-[click] 2. Next is jwt_authn, from RequestAuthentication. At the gateway it only looks at the Authorization header, and a browser doesn't send one. A missing token is not an error, so the request simply continues.
+Let's follow alice's browser request to /api/headers through both proxies.
 
-[click] 3. Then rbac, from the gateway's ALLOW policy. Its rule for app.localhost has no conditions: no token, no role. That's on purpose. The same policy has rules for api.localhost, and once there are ALLOW rules, anything not listed gets a 403. So app.localhost needs its own rule, and it can be empty, because ext_authz has already checked the session.
+[click] 1. The first filter at the ingress gateway is ext_authz. 
 
-[click] 4. The router applies the VirtualService. It removes the cookie and sends the request to the Spring pod.
+It comes from the AuthorizationPolicy with action CUSTOM. 
 
-[click] 5. Now we're in Spring's sidecar. Its jwt_authn filter, from the sidecar's RequestAuthentication, finds the token in the X-Auth-Request-Access-Token header.
+Envoy pauses the request and asks OAuth2-Proxy. 
+
+OAuth2-Proxy checks the cookie, says yes, and adds the identity headers, including the access token.
+
+[click] 2. Next is jwt_authn filter, from RequestAuthentication. 
+
+At the gateway it only looks at the Authorization header, and a browser doesn't send one. 
+
+A missing token is not an error, so the request simply continues.
+
+[click] 3. Then rbac filter, from the gateway's ALLOW policy. 
+
+Its rule for app.localhost has no conditions: no token, no role. That's on purpose. 
+
+It can be empty, because ext_authz has already checked the session.
+
+[click] 4. The router applies the VirtualService. 
+
+It removes the cookie and sends the request to the Spring pod.
+
+[click] 5. Now we're in Spring's sidecar. 
+
+Its jwt_authn filter, from the sidecar's RequestAuthentication, finds the token in the X-Auth-Request-Access-Token header.
 
 [click] 6. It reads the key ID from the token header, takes the matching key from Keycloak's public keys, and checks the signature.
 
-[click] 7. Then it reads the payload and checks the issuer, the expiry, and the audience: spring-api.
+[click] 7. Then it reads the payload and checks the issuer, the expiry, and the audience.
 
-[click] 8. The token is valid, so the filter stores the result for the next filter: who the user is, and all the claims. This is the key point: RequestAuthentication reads the token, and the AuthorizationPolicy only uses the result.
+[click] 8. The token is valid, so the filter stores the result for the next filter: who the user is, and all the claims. 
+
+This is the key point: RequestAuthentication reads the token write down in Envoy, and the AuthorizationPolicy only uses the result.
 
 [click] 9. Now rbac checks the ALLOW policy. /api/headers needs the role developer. alice has it, so the request is allowed.
 
@@ -1255,6 +1320,33 @@ This is the policy for browser access. For app.localhost, Istio asks OAuth2-Prox
 [click] This VirtualService is for the /oauth2 route. It removes the identity headers from OAuth2-Proxy's replies, so they do not leak back to the browser.
 
 [click] The Spring route removes the cookie after OAuth2-Proxy has checked it, so Spring never sees the session.
+-->
+
+---
+clicks: 6
+routeAlias: b-hosts
+---
+
+<div class="kicker">Backup · access paths · host names</div>
+
+# Why two host names: app and api
+
+<TwoHosts />
+
+<!--
+Why do we have two host names, app.localhost and api.localhost? Both reach the same apps. The difference is how the gateway checks the request, and the gateway decides that by the host.
+
+[click] 1. A person in a browser without a cookie comes in through app.localhost. ext_authz asks OAuth2-Proxy, and OAuth2-Proxy answers with a redirect to the Keycloak login page. For a person, that's exactly right.
+
+[click] 2. A script without a token comes in through api.localhost. There is no OAuth2-Proxy on this host. Without a token, the gateway's rbac answers 403, and with a bad token, jwt_authn answers 401. A script can't fill in a login page, so a clear error is what it needs.
+
+[click] 3. There's also a security benefit. OAuth2-Proxy sets no cookie domain, so the session cookie belongs to app.localhost only. The browser never sends it to api.localhost, and that host only accepts Bearer tokens, which a browser never adds by itself. So a forged request from another website, what we call CSRF, can't use alice's session there.
+
+[click] 4. And this is a very common split in the industry. GitHub, Stripe, Slack: one host for people, one host for the API. The reasons are the same as ours: cookies versus tokens, a redirect versus a 401, and separate rate limits, firewall rules, CORS and certificates. It also lets you scale and version the API on its own.
+
+[click] 5. The alternative is one host, split by path: slash app and slash api. That's common too. Here we could limit the CUSTOM policy to certain paths, or let OAuth2-Proxy accept JWTs with skip-jwt-bearer-tokens. The cost: the policies get more complex, and the cookie is now sent to the API paths too, so CSRF is back in scope.
+
+[click] 6. In production there's often one more piece: a backend for frontend, or BFF. The browser only talks to its own web backend, and that backend calls the APIs with a token. In the POC, both hosts reach the same apps on purpose, so we can show both paths side by side. But the basic idea, a cookie for people and a token for machines, is standard practice.
 -->
 
 ---
