@@ -1,5 +1,6 @@
 <script setup lang="ts">
 // Two ways to carry identity (slide 10). Needs `clicks: 6`.
+// Each lane sends a request every 4 seconds, only on its own click (and the red one on click 3).
 // Click 1: a browser request carries the encrypted session cookie; OAuth2-Proxy decrypts and checks it.
 // Click 2: a script sends a bearer JWT; anyone can decode it; Istio's RequestAuthentication verifies it.
 // Click 3: someone changes one claim in the JWT; the signature no longer matches → 401 at the gateway
@@ -111,11 +112,12 @@ const st = (at: number) => (s.value < at ? 'wait' : s.value === at ? 'now' : 'do
 .packet {
   position: absolute; top: 18px; left: 0; display: flex; align-items: center; gap: 0.3rem; padding: 0.12rem 0.5rem; border-radius: 99px;
   background: var(--c); color: #fff; font-size: 0.62rem; font-weight: 700; box-shadow: 0 6px 16px -6px var(--c);
-  animation: go 1.1s cubic-bezier(0.5, 0, 0.3, 1) both;
+  animation: go 4s cubic-bezier(0.5, 0, 0.3, 1) infinite;
 }
 .packet .dot { width: 0.4rem; height: 0.4rem; border-radius: 50%; background: #fff; }
 .lane.bad .packet { background: var(--red); }
-@keyframes go { 0% { left: 0; opacity: 0; } 10% { opacity: 1; } 90% { left: calc(100% - 70px); opacity: 1; } 100% { left: calc(100% - 70px); opacity: 0; } }
+/* one request every 4 s: travel ~1.1 s, then a pause */
+@keyframes go { 0% { left: 0; opacity: 0; } 3% { opacity: 1; } 27% { left: calc(100% - 70px); opacity: 1; } 31%, 100% { left: calc(100% - 70px); opacity: 0; } }
 
 .cred {
   margin-top: 44px; font-size: 0.62rem; color: var(--navy); opacity: 0; transform: translateY(6px); transition: all 0.4s;

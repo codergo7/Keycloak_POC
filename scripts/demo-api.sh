@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Live demo of API access (api.localhost): the seven checks from the "Demo: API access"
+# Live demo of API access (api.localhost): the seven steps from the "Demo: API access"
 # slide, one at a time, with the command, the result and what it proves.
 #
 #   make demo-api            press Enter to run each request and to show the next check
@@ -157,7 +157,7 @@ preflight() {
   fi
 }
 
-echo "${B}API access · api.localhost · seven checks with curl${R}"
+echo "${B}API access · api.localhost · seven steps with curl${R}"
 echo "  ${DIM}Under each result: the Envoy filters the request went through.${R}"
 echo "  ${GREEN}✓${R} passed   ${YELLOW}○${R} no token, nothing to check   ${DIM}–${R} no policy for this host   ${RED}${B}✕${R} stopped here   ${DIM}grey: not reached${R}"
 echo "${DIM}Expected result first, then the real answer from the cluster.${R}"

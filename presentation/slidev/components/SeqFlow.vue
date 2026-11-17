@@ -119,7 +119,7 @@ const steps: Step[] = [
   {
     from: 1, to: 4, kind: 'mesh', label: '13 · forward + headers, no cookie',
     title: 'Spring gets identity, not the session',
-    text: 'The router strips the cookie and forwards the request. Spring’s sidecar validates the access token again.',
+    text: 'The router strips the cookie and forwards the request. Spring’s sidecar validates the access token.',
     code: '→ spring-app:8080\nX-Auth-Request-User: alice\nX-Auth-Request-Access-Token: eyJ…\nCookie: (removed by route rule)',
     chips: ['sidecar re-checks JWT', 'headers.request.remove'],
   },
