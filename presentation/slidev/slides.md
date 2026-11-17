@@ -76,7 +76,9 @@ At the end of this talk, I'll show exactly that, live.
 <p class="remember mt-6">The goal: <b>security out of the application.</b> The platform decides who you are and which endpoints you may call; the app keeps the rules that need its own data.</p>
 
 <!--
-The goal is: security out of the application. The platform decides who you are and which endpoints you may call. 
+The goal is: security out of the application. 
+
+The platform decides who you are and which endpoints you may call. 
 
 Not everything moves out, though. 
 
@@ -86,9 +88,9 @@ We'll come back to that at the end.
 
 I won't go deep into each tool. I'll summarize each one, and then show how they work together.
 
-[click] First, the theory, from authentication and authorization to tokens and the login flow.
+[click] First, the theory, from authentication and authorization to tokens and the login flow. It is bacically boring part.
 
-[click] Then our POC, with its two ways in: browser access for people, and API access for scripts.
+[click] Then our POC, with its two ways in: browser access for people, and API access for scripts or (in other word machine to machine).
 
 [click] And finally the live demo.
 -->
@@ -153,9 +155,13 @@ clicks: 5
 <ArchDiagram />
 
 <!--
-So who answers those two questions in our setup? This is what I built: one kind cluster on my laptop, with four namespaces.
+So who answers those two questions in our setup? 
 
-[click] Browsers and scripts both enter through the Istio ingress gateway on localhost port 8080. The gateway routes three host names, and there is no other way into the cluster.
+This is what I built: one kind cluster on my laptop, with four namespaces.
+
+[click] Browsers and scripts both enter through the Istio ingress gateway on localhost port 8080. 
+
+The gateway routes three host names, and there is no other way into the cluster.
 
 [click] The identity namespace contains Keycloak, which holds our realm, called demo. Keycloak stores its data in Postgres.
 
@@ -589,11 +595,13 @@ Its jwt_authn filter, from the sidecar's RequestAuthentication, finds the token 
 
 [click] 8. The token is valid, so the filter stores the result for the next filter: who the user is, and all the claims. 
 
-This is the key point: RequestAuthentication reads the token write down in Envoy, and the AuthorizationPolicy only uses the result.
+This is the key point: RequestAuthentication checks the token and writes down the result. The AuthorizationPolicy only reads that result, never the token.
 
 [click] 9. Now rbac checks the ALLOW policy. /api/headers needs the role developer. alice has it, so the request is allowed.
 
-[click] 10. Spring gets the request with the identity headers and answers 200. Spring never parsed a token or checked a role.
+[click] 10. Spring gets the request with the identity headers and answers 200. 
+
+Spring never parsed a token or checked a role.
 
 [click] 11. Now the same request from bob. His token is valid, and he passes every filter until the last one. He doesn't have the developer role, so the sidecar answers 403, and Spring never sees the request.
 -->
@@ -609,17 +617,31 @@ clicks: 5
 <GrowMesh />
 
 <!--
-So that's one request through one backend. But what happens when we add a second team, or a third one? Here we already have two backends: Spring, and the reports API in Python. Each one has its own namespace, its own sidecar, and its own pair of resources. Let's add a third one, x-api, and it can be written in any language.
+So that's one request through one backend. But what happens when we add third one? 
+
+Here we already have two backends: Spring, and the reports API in Python. 
+
+Each one has its own namespace, its own sidecar, and its own pair of resources. 
+
+Let's add a third one, x-api, and it can be written in any language.
 
 [click] 1. First, Keycloak. We add a client for the new API, and an audience scope. Now a token can say: I'm meant for x-api.
 
-[click] 2. Second, a namespace with sidecar injection turned on. When the pod starts, Istio adds the Envoy sidecar automatically. Right now it has no rules yet.
+[click] 2. Second, a namespace with sidecar injection turned on. When the pod starts, Istio adds the Envoy sidecar automatically.
 
-[click] 3. Third, the two resources we've seen all along. istiod sends them to the new sidecar. The RequestAuthentication checks the token and the audience x-api. The AuthorizationPolicy checks the roles.
+[click] 3. Third, the two resources we've seen all along. istiod sends them to the new sidecar. 
+
+The RequestAuthentication checks the token and the audience. The AuthorizationPolicy checks the roles.
 
 [click] 4. Fourth, the gateway. We add one route in the VirtualService, and one ALLOW rule that requires a valid token, just like the one we have for the reports API. And the request reaches x-api.
 
-[click] 5. So, what did we add? One client, one namespace, two Istio resources, a route and a rule. Everything else stayed the same: the filter chain, OAuth2-Proxy, istiod, and the other two apps. And the new app contains no security code at all. The next backend is the same four steps.
+[click] 5. So, what did we add? One client, one namespace, two Istio resources, a route and a rule. 
+
+Everything else stayed the same: the filter chain, OAuth2-Proxy, istiod, and the other two apps. 
+
+And the new app contains no security code at all. 
+
+The next backend is the same four steps.
 -->
 
 ---
@@ -643,37 +665,49 @@ So that's one request through one backend. But what happens when we add a second
 <p class="remember">Spring knows <b>who</b> alice is and never sees her session. Her roles decide what she may open, before Spring sees the request.</p>
 
 <!--
-Now let's see browser access live. I'll use a private window, so there are no old cookies. For each step, I'll say what I expect first.
+Now let's see browser access live. 
 
 *Before: close every other private window. Private windows share their cookies.*
 
 **1 · No session: the login page**
 
-*Do: open a private window and go to app.localhost:8080/api/whoami.*
+I am going to open a browser with no old cookie 
 
-alice has no session cookie yet, so I expect to land on Keycloak, not on Spring.
+and then I will go app.localhost:8080/api/whoami.*, 
 
-*Result: Keycloak's "Sign in to Demo" page.*
+My browser has no session cookie yet, so I expect to land on Keycloak login page.
 
-The gateway asked OAuth2-Proxy, OAuth2-Proxy found no session, and it sent the browser to Keycloak. Spring wasn't called at all. In the address bar you can see client_id=oauth2-proxy.
+Let's open inspect. Here we have 302, Why?: The gateway asked Oauth2Proxy, is this browser request logged in? 
+Oauth2Proxy found no session and it sent the browser to Keycloak with 302 redirect. Spring backend app was'nt called at all.
+In the address bar you can see client_id=ouath2-proxy
+Because Oauth2Proxy is OIDC client and it manages the login flow behalf of users.
+
+
+
 
 **2 · Log in as alice**
 
 *Do: log in as alice, password alice.*
 
-The password goes only to Keycloak. Our application never sees it.
+I am gonna login as alice.
 
-*Result: back on /api/whoami, with alice's user ID and email.*
+The password goes only to Keycloak. Our application never sees it.
 
 Spring didn't read a token or a cookie. It read headers that OAuth2-Proxy added at the gateway.
 
 *Do: open app.localhost:8080/api/headers.*
 
-This page lists every header Spring received. There's no cookie: the gateway removed it. But the access token is there, and Spring's sidecar already checked it, including her developer role. So Spring knows who alice is, but never sees her session.
+Now Im gonna open app.localhost:8080/api/headers.*
+
+This page lists every header Spring received. There's no cookie: the gateway removed it. But the access token is there, 
+and Spring's sidecar already checked it, including her developer role. 
+So Spring knows who alice is, but never sees her session.
 
 **3 · Logged in, but not allowed**
 
 *Do: in the same window, open app.localhost:8080/api/admin.*
+
+Next, I am gonna open app.localhost:8080/api/admin
 
 alice is logged in, but /api/admin needs the admin role, and she doesn't have it. So I expect a 403.
 
@@ -685,7 +719,8 @@ Her session is valid, so the gateway let the request through. Then Spring's side
 
 *Do: in the Keycloak admin console, keycloak.localhost:8080/admin as admin/admin, switch to the demo realm: Users, alice, Role mapping, Assign role, admin.*
 
-I give alice the admin role, in Keycloak only. No code change, no redeploy.
+I'll give alice the admin role, in Keycloak only. No code change, no redeploy.
+I am gonno open Keycloak admin console. 
 
 *Do: open app.localhost:8080/api/admin again.*
 
