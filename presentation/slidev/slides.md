@@ -167,7 +167,7 @@ The gateway routes three host names, and there is no other way into the cluster.
 
 [click] OAuth2-Proxy runs in the same namespace. The gateway asks it whether a browser request is logged in, and this check is called ext_authz (I'll explain it later). 
 
-During login, OAuth2-Proxy also calls Keycloak directly, pod to pod inside the cluster, never through the browser. We call that the back channel.
+During login, OAuth2-Proxy also calls Keycloak directly, server to server inside the cluster, never through the browser. We call that the back channel.
 
 [click] Each application has its own namespace, with an Envoy sidecar next to it. Spring Boot serves the /api paths, and FastAPI serves /reports.  Both apps can be reached through the app host and the api host.
 
