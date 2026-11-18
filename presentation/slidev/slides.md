@@ -110,7 +110,7 @@ I won't go deep into each tool. I'll summarize each one, and then show how they 
     <p><b>Identification:</b> you claim an identity (“I am alice”)<br>
     <b>Verification:</b> you prove it (password, OTP, certificate)<br>
     <b>Result:</b> a trusted identity, carried in a token or session</p>
-    <div class="mt-3"><span class="chip orange">401 = who are you?</span></div>
+    <div class="mt-3"><span class="chip orange">401 = we couldn’t verify you</span></div>
   </div>
   <div v-click class="card !p-5">
     <div class="flex items-center gap-3 mb-2">
@@ -120,7 +120,7 @@ I won't go deep into each tool. I'll summarize each one, and then show how they 
     <p><b>Roles &amp; groups:</b> admin, developer, /engineering<br>
     <b>Scopes:</b> what a client may ask on your behalf<br>
     <b>Claims:</b> the facts in the token that rules check</p>
-    <div class="mt-3"><span class="chip red">403 = I know you, and no</span></div>
+    <div class="mt-3"><span class="chip red">403 = verified or not, you can’t do this</span></div>
   </div>
 </div>
 
@@ -131,13 +131,13 @@ Authentication answers one question: who are you?
 
 You claim an identity, and then you prove it, for example with a password. 
 
-If that fails, the answer is 401: meaning we don't know who you are.
+If that fails, the answer is 401: we couldn't verify who you are. For example, you sent a token, but it's invalid.
 
 [click] Authorization comes next: what are you allowed to do? 
 
 The answer depends on your roles, scopes and claims. 
 
-If authorization fails, the answer is 403: we know who you are, but you can't do this.
+If authorization fails, the answer is 403: whether we know you or not, you can't do this. Usually it's your roles. But as we'll see in the demo, a request with no token at all also gets a 403.
 
 The order never changes. 
 
@@ -201,25 +201,14 @@ Each of the four components has one job.
 -->
 
 ---
+clicks: 6
+---
 
 <div class="kicker">Keycloak · the identity provider</div>
 
 # Five terms you need for Keycloak
 
-<div class="tbl-card mt-3">
-<table class="tbl">
-  <thead><tr><th>Term</th><th>In plain words</th><th>In our POC</th></tr></thead>
-  <tbody>
-    <tr v-click><td class="strong">Realm</td><td>An isolated space with its own users, roles and clients</td><td><code>demo</code></td></tr>
-    <tr v-click><td class="strong">Client</td><td>An application registered in Keycloak: one that asks for tokens, or an API that receives them</td><td>asks: <code>oauth2-proxy</code> <code>cli-client</code><br>APIs: <code>spring-api</code> <code class="whitespace-nowrap">reports-api</code></td></tr>
-    <tr v-click><td class="strong">User &amp; group</td><td>A person, and a team they belong to</td><td>alice, bob, admin · <code>/engineering</code> <code>/finance</code> <code>/finance/managers</code> <code>/admins</code></td></tr>
-    <tr v-click><td class="strong">Realm &amp; client role</td><td>A permission label: realm roles are shared, client roles belong to one API. A composite role contains others</td><td>user, developer, admin · <code>reports-api</code>: viewer, editor (editor contains viewer)</td></tr>
-    <tr v-click><td class="strong">Client scope</td><td>A named bundle of claims a client can request</td><td><code>groups</code> <code>app-audience</code> <code>reports</code></td></tr>
-  </tbody>
-</table>
-</div>
-
-<p v-click class="remember text-sm muted">Groups carry roles: <code>/engineering</code> gives alice <code>developer</code>, and <code>/finance</code> gives bob the <code>reports-api</code> role <code>viewer</code>.</p>
+<KeycloakTerms />
 
 <!--
 Let's look at each one, starting with Keycloak. These are the terms I'll use during the talk.
@@ -239,7 +228,9 @@ A composite role contains other roles, so editor also includes viewer.
 
 [click] A client scope is a named set of claims that a client can request. For example: When a client asks for the reports scope, the token gets reports-api in its audience.
 
-[click] Groups can also carry roles. alice gets the developer role from the engineering group, and bob gets the reports viewer role from the finance group.
+[click] Groups can also carry roles. alice gets the developer role from the engineering group, and bob gets the reports viewer role from the finance group. In the API demo, bob joins the managers group and gets editor.
+
+At the bottom is the result in alice's token: the audience from the app-audience scope, her group from the groups scope, and her roles from the engineering group plus the user role she has directly.
 -->
 
 ---
@@ -862,7 +853,7 @@ class: navy
 
 <div class="grid grid-cols-2 gap-4 mt-6">
   <div v-for="(t, i) in [
-      { t: 'AuthN, then AuthZ', d: '401 = who are you? 403 = I know you, and no.' },
+      { t: 'AuthN, then AuthZ', d: '401 = we couldn’t verify you. 403 = verified or not, you can’t do this.' },
       { t: 'One job per component', d: 'Keycloak authenticates, OAuth2-Proxy keeps the session, Istio enforces.' },
       { t: 'Always pair them', d: 'RequestAuthentication alone lets no-token requests through.' },
       { t: 'Claims, not code', d: 'Roles in the token decide access: the gateway checks there is a valid token; each sidecar checks it is meant for its app, and the roles.' },
@@ -882,7 +873,7 @@ class: navy
 <!--
 Here are four things to remember.
 
-A 401 means we don't know who you are. A 403 means we know you, and the answer is no.
+A 401 means we couldn't verify who you are. A 403 means that, verified or not, you can't do this.
 
 Keycloak authenticates, OAuth2-Proxy keeps the browser session, and Istio enforces the policies.
 
