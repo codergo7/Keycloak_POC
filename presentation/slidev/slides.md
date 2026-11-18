@@ -289,26 +289,17 @@ OAuth2-Proxy turns a login into a session cookie. Let's see what that means.
 -->
 
 ---
+clicks: 4
+---
 
 <div class="kicker">Istio · policy enforcement</div>
 
 # Three resources do all the enforcing
 
-<div class="tbl-card mt-3">
-<table class="tbl">
-  <thead><tr><th>Resource</th><th>Kind of job</th><th>What it does for us</th></tr></thead>
-  <tbody>
-    <tr v-click><td class="strong">Gateway + VirtualService</td><td><span class="chip">Routing</span></td><td>Routes our three hosts to the right service, and adds or removes headers per route</td></tr>
-    <tr v-click><td class="strong">RequestAuthentication</td><td><span class="chip orange">AuthN</span></td><td>Validates a JWT: issuer, signature, expiry, audience</td></tr>
-    <tr v-click><td class="strong">AuthorizationPolicy</td><td><span class="chip red">AuthZ</span></td><td>ALLOW / DENY / CUSTOM on paths and token claims</td></tr>
-  </tbody>
-</table>
-</div>
-
-<p v-click class="remember">Every pod gets an Envoy sidecar; the ingress gateway is an Envoy too. <b>The rules run there, not in your code.</b> No EnvoyFilter needed.</p>
+<IstioEnforce />
 
 <!--
-Istio enforces everything with three kinds of resources.
+Istio enforces everything with three kinds of resources. On the right is where they end up: the ingress gateway, and our two apps, each with an Envoy sidecar next to it.
 
 [click] Gateway and VirtualService route our hosts to the right service.
 
@@ -316,7 +307,9 @@ Istio enforces everything with three kinds of resources.
 
 [click] AuthorizationPolicy makes the decision. It can allow a request, deny it, or delegate the decision to an external authorizer with the CUSTOM action.
 
-[click] All of these rules run in Envoy, both at the gateway and in each sidecar. None of them run in our application code.
+[click] So who puts them there? istiod, Istio's control plane. It turns these YAML resources into Envoy config and sends it to the gateway and to every sidecar.
+
+All of these rules run in Envoy, both at the gateway and in each sidecar. None of them run in our application code.
 -->
 
 ---
