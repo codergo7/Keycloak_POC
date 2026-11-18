@@ -10,6 +10,7 @@ const groups = [
     { a: 'b-claims', l: 'Every endpoint and the claim it needs' },
     { a: 'b-six', l: 'Six requests, where each one stops' },
     { a: 'b-filters', l: 'From Istio YAML to envoy.filters.http.*' },
+    { a: 'b-envoy-api', l: 'Inside Envoy: the API path' },
     { a: 'b-rbac', l: 'How an AuthorizationPolicy decides' },
     { a: 'b-debug', l: 'How to debug a 401 or 403' },
   ] },
@@ -30,6 +31,7 @@ const groups = [
     { a: 'b-jwks', l: 'Where do the keys come from?' },
   ] },
   { t: 'Design questions', cls: 'navy', items: [
+    { a: 'b-grow', l: 'Adding a new API in four steps' },
     { a: 'b-audience', l: 'Audience and scopes: likely questions' },
     { a: 'b-s2s', l: 'One service calling another' },
     { a: 'b-lessons', l: 'Six issues we found' },

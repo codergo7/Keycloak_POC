@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Two ways to carry identity (slide 10). Needs `clicks: 6`.
+// Two ways to carry identity: opens the POC part (slide 13). Needs `clicks: 6`.
 // Each lane sends a request every 4 seconds, only on its own click (and the red one on click 3).
 // Click 1: a browser request carries the encrypted session cookie; OAuth2-Proxy decrypts and checks it.
 // Click 2: a script sends a bearer JWT; anyone can decode it; Istio's RequestAuthentication verifies it.
