@@ -24,6 +24,15 @@ const groups = [
   { n: '/managers', y: 220, x: 172, w: 98 },
 ]
 // group → role, drawn on click 6
+// one-line definition of the term on the current click, shown under the diagram
+const defs: Record<number, [string, string]> = {
+  1: ['Realm', 'An isolated space with its own users, roles, clients and settings. One Keycloak can host many realms.'],
+  2: ['Client', 'An application registered in Keycloak: one that asks for tokens, or an API that tokens are issued for.'],
+  3: ['User & group', 'A user is a person who can log in. A group is a set of users, and can give roles to all its members.'],
+  4: ['Role', 'A permission label. Realm roles are shared; client roles belong to one API. A composite role contains others.'],
+  5: ['Client scope', 'A named bundle of claims a client can request. It decides what goes into the token, like the audience.'],
+  6: ['Groups carry roles', 'Join a group, get its roles. The token lists the result, and that is what the access rules check.'],
+}
 const carries = [
   'M270,57 C305,57 305,63 340,63',
   'M270,117 C305,117 305,99 340,99',
@@ -115,12 +124,17 @@ const carries = [
       <span class="f">"groups": ["/engineering"]<small>groups scope</small></span>
       <span class="f">"realm_access.roles": ["developer", "user"]<small>/engineering + direct</small></span>
     </div>
+
+    <!-- definition of the current term -->
+    <Transition name="def" mode="out-in">
+      <div v-if="defs[s]" :key="s" class="def"><b class="mono">{{ defs[s][0] }}</b>{{ defs[s][1] }}</div>
+    </Transition>
   </div>
 </template>
 
 <style scoped>
 .kt { --navy: #14213d; --blue: #2459c9; --orange: #c2570c; --green: #1f8a5b; --violet: #7b3fbf; --muted: #7a8496;
-  position: relative; width: 894px; height: 380px; margin-top: 0.9rem; }
+  position: relative; width: 894px; height: 410px; margin-top: 0.9rem; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 .kt > div, .w { opacity: 0; transition: opacity 0.45s, transform 0.45s, box-shadow 0.3s, border-color 0.3s; }
 .kt > .on, .w.on { opacity: 1; }
@@ -178,4 +192,10 @@ const carries = [
 .f { display: flex; flex-direction: column; font-size: 0.66rem; white-space: nowrap; }
 .f small { font: 400 0.5rem 'Inter', sans-serif; color: #aeb7cc; }
 .f small::before { content: '← '; }
+
+.kt > .def { position: absolute; left: 0; top: 386px; max-width: 840px; display: flex; align-items: baseline; gap: 0.5rem; opacity: 1;
+  font-size: 0.66rem; color: #1b2433; white-space: nowrap; }
+.def b { font-size: 0.6rem; color: var(--blue); text-transform: uppercase; letter-spacing: 0.05em; }
+.def-enter-active, .def-leave-active { transition: opacity 0.25s; }
+.def-enter-from, .def-leave-to { opacity: 0 !important; }
 </style>

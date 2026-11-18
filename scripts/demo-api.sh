@@ -165,8 +165,9 @@ preflight
 
 # ---------------------------------------------------------------------------
 step "1. Public endpoint, no token" \
+  "${MAGENTA}${B}Why:${R}${MAGENTA} Public endpoints must stay open, and they are opened in the policy, not in the code.${R}" \
   "The ingress policy has an ALLOW rule for GET /api/public with ${B}no from: block${R}," \
-  "so it does not need a requestPrincipal: anyone matches."
+  "so no need a requestPrincipal"
 snippet k8s/istio/ingress-authorization.yaml "AuthorizationPolicy ingress-authorization (ALLOW)" <<'YAML'
 # Public API endpoint
 - to:
@@ -183,6 +184,7 @@ flow Spring skip none ok ok none ok
 
 # ---------------------------------------------------------------------------
 step "2. Protected endpoint, no token" \
+  "${MAGENTA}${B}Why:${R}${MAGENTA} RequestAuthentication alone lets a missing token through; we check that the policy blocks it.${R}" \
   "RequestAuthentication has ${B}nothing to check${R}, so it lets the request pass." \
   "A ${B}requestPrincipal${R} exists only after RequestAuthentication has verified a JWT: it is iss/sub." \
   "${B}requestPrincipals: [\"*\"]${R} means \"any verified token\". No token → no principal → no rule matches."
@@ -206,6 +208,7 @@ flow Spring skip none fail:403 - - -
 # ---------------------------------------------------------------------------
 ALICE="$(token alice)" || exit 1
 step "3. Tampered token" \
+  "${MAGENTA}${B}Why:${R}${MAGENTA} Anyone can read a JWT; we check that nobody can change it.${R}" \
   "One character changed in alice's token: the signature no longer matches." \
   "The gateway's RequestAuthentication verifies it with the keys from ${B}jwksUri${R}, for the listed ${B}issuer${R}." \
   "A token that is present but invalid is rejected with 401 before any AuthorizationPolicy runs."
@@ -225,6 +228,7 @@ flow Spring skip fail:401 - - - -
 # ---------------------------------------------------------------------------
 BOB="$(token bob)" || exit 1
 step "4. bob: user yes, developer no" \
+  "${MAGENTA}${B}Why:${R}${MAGENTA} A valid token isn't enough; the roles in it decide what bob may call.${R}" \
   "bob's token is valid, so he has a requestPrincipal and passes the gateway rule from step 2." \
   "At Spring's sidecar each rule needs the principal ${B}and${R} a realm role in the token (${B}when${R})." \
   "bob has ${B}user${R}, but not ${B}developer${R}."
@@ -268,6 +272,7 @@ flow Spring skip ok ok ok ok fail:403
 
 # ---------------------------------------------------------------------------
 step "5. bob without scope=reports" \
+  "${MAGENTA}${B}Why:${R}${MAGENTA} A token for one API must not work on another API.${R}" \
   "bob has the reports viewer role, but this token was ${B}not issued for the reports API${R}:" \
   "aud contains only spring-api."
 claims "$BOB"
@@ -289,6 +294,7 @@ flow FastAPI skip ok ok ok fail:403 -
 # ---------------------------------------------------------------------------
 BOB_R="$(token bob reports)" || exit 1
 step "6. bob with scope=reports" \
+  "${MAGENTA}${B}Why:${R}${MAGENTA} With the right audience, the client roles of reports-api decide: read yes, create no.${R}" \
   "Same user, new token, asked for ${B}scope=reports${R}: aud now includes reports-api."
 principal "$BOB_R"
 claims "$BOB_R"
@@ -331,6 +337,7 @@ flow FastAPI skip ok ok ok ok fail:403
 
 # ---------------------------------------------------------------------------
 step "7. Add bob to /finance/managers" \
+  "${MAGENTA}${B}Why:${R}${MAGENTA} Access changes in Keycloak, with no code change or redeploy.${R}" \
   "In the admin console: ${B}Users → bob → Groups → Join group → finance/managers${R}." \
   "The script does the same through the Keycloak admin API, then asks for a new token."
 ADMIN_AT="$(curl -sS -d client_id=admin-cli -d username=admin -d password=admin -d grant_type=password \

@@ -90,7 +90,7 @@ I won't go deep into each tool. I'll summarize each one, and then show how they 
 
 [click] First, the theory, from authentication and authorization to tokens and the login flow.
 
-[click] Then our POC, with its two ways in: browser access for people, and API access for scripts, or machine to machine.
+[click] Then our POC, with its two ways in: browser access for people, and API access for scripts and command-line tools, which send a bearer token.
 
 [click] And finally the live demo.
 -->
@@ -137,11 +137,11 @@ If that fails, the answer is 401: we couldn't verify who you are. For example, y
 
 The answer depends on your roles, scopes and claims. 
 
-If authorization fails, the answer is 403: whether we know you or not, you can't do this. Usually it's your roles. But as we'll see in the demo, a request with no token at all also gets a 403.
+If authorization fails, the answer is 403: which means whether we know you or not, you can't do this. 
 
 The order never changes. 
 
-We can't decide what you may do before we know who you are.
+First authenticationa and then authorization.
 -->
 
 ---
@@ -171,7 +171,9 @@ During login, OAuth2-Proxy also calls Keycloak directly, server to server inside
 
 [click] Each application has its own namespace, with an Envoy sidecar next to it. Spring Boot serves the /api paths, and FastAPI serves /reports.  Both apps can be reached through the app host and the api host.
 
-[click] Finally, istiod is the Istio control plane. It sends routes and policies to the gateway and to both sidecars, and it fetches Keycloak's public keys so that the proxies can verify tokens.
+[click] Finally, 
+
+istiod is the Istio control plane. It sends routes and policies to the gateway and to both sidecars, and it fetches Keycloak's public keys so that the proxies can verify tokens.
 -->
 
 ---
@@ -228,7 +230,7 @@ A composite role contains other roles, so editor also includes viewer.
 
 [click] A client scope is a named set of claims that a client can request. For example: When a client asks for the reports scope, the token gets reports-api in its audience.
 
-[click] Groups can also carry roles. alice gets the developer role from the engineering group, and bob gets the reports viewer role from the finance group. In the API demo, bob joins the managers group and gets editor.
+[click] Groups can also carry roles. alice gets the developer role from the engineering group, and bob gets the reports viewer role from the finance group.
 
 At the bottom is the result in alice's token: the audience from the app-audience scope, her group from the groups scope, and her roles from the engineering group plus the user role she has directly.
 -->
@@ -299,17 +301,25 @@ clicks: 4
 <IstioEnforce />
 
 <!--
-Istio enforces everything with three kinds of resources. On the right is where they end up: the ingress gateway, and our two apps, each with an Envoy sidecar next to it.
+Istio enforces everything with three kinds of resources. 
+
+On the right is where they end up: the ingress gateway, and our two apps, each with an Envoy sidecar next to it.
 
 [click] Gateway and VirtualService route our hosts to the right service.
 
 [click] RequestAuthentication validates a JWT by checking its issuer, signature, expiry and audience.
 
-[click] AuthorizationPolicy makes the decision. It can allow a request, deny it, or delegate the decision to an external authorizer with the CUSTOM action.
+[click] AuthorizationPolicy makes the decision. 
 
-[click] So who puts them there? istiod, Istio's control plane. It turns these YAML resources into Envoy config and sends it to the gateway and to every sidecar.
+It can allow a request, deny it, or delegate the decision to an external authorizer with the CUSTOM action.
 
-All of these rules run in Envoy, both at the gateway and in each sidecar. None of them run in our application code.
+[click] So who puts them there? 
+
+istiod, Istio's control plane. It turns these YAML resources into Envoy config and sends it to the gateway and to every sidecar.
+
+All of these rules run in Envoy, both at the gateway and in each sidecar. 
+
+None of them run in our application code.
 -->
 
 ---
@@ -348,7 +358,13 @@ All of these rules run in Envoy, both at the gateway and in each sidecar. None o
 </div>
 
 <!--
-Most of those rules read one thing: the JWT. A JWT has three parts: a header, a payload and a signature. This is a shortened version of alice's access token.
+Most of those rules read one thing: 
+
+the JWT. 
+
+A JWT has three parts: a header, a payload and a signature. 
+
+This is a shortened version of alice's access token.
 
 [click] iss, aud and azp (authorized party) tell us who issued the token, who it is for, and which client asked for it.
 
@@ -488,7 +504,9 @@ clicks: 6
 <CarryIdentity />
 
 <!--
-That's the theory. Our POC has two ways in, one for people and one for scripts, and each one carries the identity differently.
+That's the theory. 
+
+Our POC has two ways in, one for people and one for scripts, and each one carries the identity differently.
 
 [click] 1. People use a browser. Their request carries an encrypted session cookie. 
 Only OAuth2-Proxy can decrypt it. That's app.localhost.
@@ -829,11 +847,16 @@ No code, no policy, no deployment changed. Only a group in Keycloak, and the cla
 To put it all together, there are four questions, and each one is answered by one layer.
 
 [click] Who is the user? Keycloak answers this, with help from OAuth2-Proxy for browsers.
-[click] Is the token real and meant for us? RequestAuthentication answers this.
-[click] Do the token's claims allow this path? AuthorizationPolicy answers this.
-[click] May alice edit this report? Istio only sees the request and the token. It doesn't know who owns report 42, so the application answers this one, with its own data.
 
-[click] The platform answers the first three questions. The application keeps only the rules that need its data, like ownership or amount limits.
+[click] Is the token real and meant for us? RequestAuthentication answers this.
+
+[click] Do the token's claims allow this path? AuthorizationPolicy answers this.
+
+[click] May alice edit this report? Istio only sees the request and the token. It doesn't know who owns what report, 
+
+so the application answers this one, with its own data.
+
+[click] The platform answers the first three questions. The application keeps only the rules that need its data, like ownership.
 -->
 
 ---
@@ -866,17 +889,27 @@ class: navy
 <!--
 Here are four things to remember.
 
-A 401 means we couldn't verify who you are. A 403 means that, verified or not, you can't do this.
+A 401 means we couldn't verify who you are. 
+
+A 403 means that, verified or not, you can't do this.
 
 Keycloak authenticates, OAuth2-Proxy keeps the browser session, and Istio enforces the policies.
 
 Always pair RequestAuthentication with an AuthorizationPolicy. Otherwise, requests without a token get through.
 
-And claims, not code: the gateway checks that there's a valid token, and each sidecar checks that the token is meant for its app and has the right roles. We changed bob's access without touching any code, in two apps written in two languages.
+And claims, not code: the gateway checks that there's a valid token, and each sidecar checks that the token is meant for its app and has the right roles. We changed bob's access without touching any code.
 
-So we're back where we started: security is out of the application. The platform decides who you are and which endpoints you may call, and the app keeps only the rules that need its own data.
+So we're back where we started: 
 
-[click] That's all from me. Any questions?
+security is out of the application. 
+
+The platform decides who you are and which endpoints you may call, and the app keeps only the rules that need its own data.
+
+[click] That's all from me. 
+
+Any questions or feedback?
+
+SLIDEV: The slides are made with Slidev, an open-source presentation tool where you write slides in Markdown and the animations are small Vue components, so the whole deck is just text files and runs in the browser.
 -->
 
 ---
