@@ -1,13 +1,18 @@
 # Keycloak, OAuth2-Proxy & Istio — Slidev deck
 
-Animated version of `../Keycloak, OAuth2-Proxy & Istio (1).pptx`.
+The talk "Claims-based Authorization using Keycloak, OAuth2-Proxy and Istio on Kubernetes", written in Slidev (Markdown + Vue components). The diagrams use the real values from `../../k8s/`.
 
 ```bash
 npm install
 npm run dev        # http://localhost:3030, presenter view at /presenter
 npm run build      # static site in dist/
-npm run export -- --executable-path /usr/bin/google-chrome   # PDF
+npm run export -- --executable-path /usr/bin/google-chrome   # PDF, one page per slide
+npm run export -- --with-clicks --executable-path /usr/bin/google-chrome   # PDF, one page per click
 ```
+
+`--range` is ignored by this Slidev version: export everything and keep the main pages
+(slides 1–18) with a PDF tool. Shareable PDFs of the main slides are in `../`
+(`Keycloak-OAuth2-Proxy-Istio.pdf`, and `-clicks.pdf` with one page per click); `*.pdf` is in `.gitignore`.
 
 Press `→` / space to step through clicks; `o` shows the slide overview.
 
@@ -34,7 +39,7 @@ Press `→` / space to step through clicks; `o` shows the slide overview.
 | `components/EnvoyInside.vue` | 14, 24 (backup) | One browser request through the ingress gateway and the Spring sidecar, filter by filter: ext_authz (AuthorizationPolicy CUSTOM), jwt_authn (RequestAuthentication) decoding the token and storing `request.auth.claims`, rbac (AuthorizationPolicy ALLOW) reading them, the router (VirtualService); then the same request as bob, denied with 403; how the setup grows is on backup slide 39 (`GrowMesh.vue`). With `mode="api"` (backup slide 24, 10 clicks) it follows a script's request to api.localhost/api/user with a Bearer token: ext_authz not called, the gateway validates the token and requires a principal, the router sends it to Spring, the sidecar checks the audience and the role; then no token (403 at the gateway), a tampered token (401 at the gateway) and /api/admin (403 at the sidecar) |
 | `components/GrowMesh.vue` | 39 (backup) | Adding a backend (x-api, any language) in four steps: a Keycloak client and audience, a namespace with sidecar injection, istiod sending the RequestAuthentication + AuthorizationPolicy pair to the new sidecar, then a route and a gateway ALLOW rule; the last click shows what was added and what stayed the same |
 | `components/TwoHosts.vue` | 31 (backup) | Why two host names: a browser without a cookie gets a 302 to the login, a script gets 403 / 401; the host-only cookie never reaches api.localhost (no CSRF there); the same split at GitHub, Stripe, Slack; the one-host, split-by-path alternative and its trade-off; and the BFF pattern in production |
-| `components/RequestLanes.vue` | 22, 29 (backup) | Requests race through the same checkpoints until the one that stops them. Props `cols`, `groups`, `lanes` (a lane’s `from` starts it past the gateway); slide 30 reuses it for the identity-spoofing attempts |
+| `components/RequestLanes.vue` | 22, 29 (backup) | Requests race through the same checkpoints until the one that stops them. Props `cols`, `groups`, `lanes` (a lane’s `from` starts it past the gateway); slide 29 reuses it for the identity-spoofing attempts |
 | `components/CookieJourney.vue` | not in the deck | The session cookie goes to oauth2-proxy and is stripped before Spring |
 | `components/HeaderGates.vue` | 32 (backup) | Every sensitive header, hop by hop, against the rule that lets it through or stops it (ext_authz header lists, VirtualService header rules, RequestAuthentication `fromHeaders`) |
 | `components/LifetimeBars.vue` | 34 (backup) | Lifetimes of the ID, access and refresh tokens, the Keycloak SSO session and the cookies, on a log time axis |
@@ -47,7 +52,7 @@ A slide that uses one of these declares its click count in its frontmatter (`cli
 
 Running order: theory (1–9), the login flow (10–11), the token refresh after the login (12), the two access paths (13), inside Envoy for browser access (14), a live demo of browser access (15), a live demo of API access (16), wrap-up (17–18), then backup slides (19–42): an index with links (20), claims per endpoint (21), six requests (22), Istio resources as Envoy filters (23), inside Envoy for API access (24), how an AuthorizationPolicy decides (25), debugging a 401 or 403 (26), who talks to Keycloak during login (27), what the browser sees after the login (28), faking an identity (29), the browser access policy (30), why two host names (31), every sensitive header (32), who can reach the database (33), token and session lifetimes (34–35), logout (36), Keycloak down (37), where the JWT keys come from (38), adding a backend (39), audience and scopes Q&A (40), service to service (41), and six issues from building the POC (42).
 
-Every slide has speaker notes written to be read aloud (the HTML comment at the end of the slide), in full sentences per click. The talk opens and closes with one message: security out of the application. The main slides (1–22) are planned for a 30-minute slot including both demos (estimate, not rehearsed; the claims table moved to backup to make room). `[click]` markers in the notes highlight the current sentence in the presenter view.
+Every slide has speaker notes written to be read aloud (the HTML comment at the end of the slide), in full sentences per click. The talk opens and closes with one message: security out of the application. The main slides (1–18) include both demos; a rehearsal of the earlier, longer version took about 45 minutes, so the API Envoy walkthrough and "adding a backend" moved to the backup slides. Every slide shows its number at the bottom right (`slide-top.vue`), so people can ask about a slide by number. `[click]` markers in the notes highlight the current sentence in the presenter view.
 
 ## Notes
 

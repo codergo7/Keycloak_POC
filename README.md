@@ -6,35 +6,48 @@ Istio authorization and application-facing identity headers.
 ## Architecture
 
 ```text
-Browser
-   |
-   | http://keycloak.localhost:8080
-   +-----------------------> Istio Ingress ---> Keycloak ---> PostgreSQL
-   |
-   | http://app.localhost:8080
-   +-----------------------> Istio Ingress ---> oauth2-proxy ---> Spring Boot
-   |                                               |
-   |                                               +--> Keycloak OIDC
-   |
-   | http://api.localhost:8080 + Bearer JWT
-   +-----------------------> Istio Ingress
-                                |
-                                + RequestAuthentication (JWKS from Keycloak)
-                                + AuthorizationPolicy (claims/roles)
-                                |
-                                +------------------------> Spring Boot  (/api/*)
-                                |
-                                +------------------------> FastAPI reports API  (/reports)
-                                                           needs aud reports-api + reports-api client roles
+                          kind cluster
+Browser / curl  ──►  Istio ingress gateway (Envoy, istio-system)
+                       │
+  keycloak.localhost   ├──► Keycloak ──► PostgreSQL                      (identity)
+                       │
+  app.localhost        ├── ext_authz (AuthorizationPolicy CUSTOM) ──► OAuth2-Proxy  (identity)
+  (browser, cookie)    │     no session  → 302 to the Keycloak login
+                       │     session ok  → 200 + X-Auth-Request-* headers and the access token
+                       ├──► /oauth2/*  ──► OAuth2-Proxy (login callback, sign-out)
+                       ├──► /reports   ──► FastAPI reports API           (reports-api)
+                       └──► /*         ──► Spring Boot                   (spring-api)
+                       │
+  api.localhost        ├── jwt_authn (RequestAuthentication): validates the Bearer JWT
+  (script, Bearer JWT) ├── rbac (AuthorizationPolicy ALLOW): requires a valid token
+                       ├──► /reports   ──► FastAPI reports API
+                       └──► /*         ──► Spring Boot
+
+Each app pod has an Envoy sidecar with its own pair of resources:
+  RequestAuthentication  checks the token again, including the audience (spring-api / reports-api)
+  AuthorizationPolicy    checks the roles in the token (realm roles / reports-api client roles)
+
+istiod turns all these resources into Envoy config, and fetches Keycloak's JWKS for every
+RequestAuthentication.
 ```
 
+OAuth2-Proxy is not in the request path: it runs with `--upstream=static://200` and only answers the
+gateway's ext_authz check. The gateway removes the session cookie before Spring, and the sidecars
+write `x-auth-request-user` / `x-auth-request-email` from the verified token.
+
 Namespaces:
+- `istio-system`: Istio control plane, ingress gateway, the gateway's RequestAuthentication and AuthorizationPolicies
 - `identity`: Keycloak, PostgreSQL, oauth2-proxy
 - `spring-api`: Spring Boot test application
 - `reports-api`: FastAPI reports API (`reports/`)
 
 Each app namespace has the same name as the app's Keycloak client and token audience.
-- `istio-system`: Istio control plane + ingress gateway + JWT policy
+
+More detail:
+- `doc/istio-request-flow.md`: every Envoy filter, in order, at the gateway and in the sidecars
+- `doc/request-authentication-scenarios.md`: what RequestAuthentication does and does not do, scenario by scenario
+- `doc/auth-code-flow.md`: the browser login (authorization code flow) step by step
+- `presentation/slidev/`: the talk (Slidev), with speaker notes and backup slides
 
 ## Requirements
 
@@ -69,8 +82,10 @@ Modern browsers resolve `*.localhost` to loopback. For CLI examples the Makefile
 
 ```bash
 make smoke
-make demo-api          # guided API access demo: explanation, command and result per check (AUTO=1: no pauses)
+make demo-api          # guided API access demo, seven steps: why, command and result per check (AUTO=1: no pauses)
 ```
+
+After the laptop sleeps, requests can fail with 503 (expired workload certificates): run `make wake`.
 
 Get a token:
 
@@ -147,6 +162,8 @@ Inspect Alice's JWT and find:
 - `realm_access.roles`
 - `resource_access.reports-api.roles` (bob)
 - `groups`
+- `preferred_username`
+- token timestamps (`iat`, `exp`)
 
 Compare `aud` with and without the reports scope:
 
@@ -158,8 +175,6 @@ Compare `aud` with and without the reports scope:
 The `audience resolve` mapper is removed from the `roles` scope on purpose: it would add
 `reports-api` to `aud` for anyone who has a `reports-api` role, and the audience must come
 only from the `reports` scope.
-- `preferred_username`
-- token timestamps (`iat`, `exp`)
 
 ## Useful Keycloak endpoint experiments
 
@@ -230,14 +245,19 @@ Open:
 
 Flow:
 
-1. Istio routes `app.localhost` to oauth2-proxy.
-2. oauth2-proxy sees no session cookie.
-3. It redirects the browser to Keycloak's authorization endpoint.
-4. Keycloak authenticates the user.
-5. Browser returns to `/oauth2/callback`.
-6. oauth2-proxy exchanges the authorization code using the internal Keycloak service.
-7. oauth2-proxy creates its session cookie.
-8. It forwards the request to Spring Boot and supplies identity/token-related headers.
+1. The gateway's CUSTOM AuthorizationPolicy sends the request to oauth2-proxy (ext_authz check).
+2. oauth2-proxy sees no session cookie and answers 302 to Keycloak's authorization endpoint.
+3. Keycloak authenticates the user and redirects the browser to `/oauth2/callback` with a code.
+4. oauth2-proxy exchanges the code for tokens at the internal Keycloak service (back channel).
+5. oauth2-proxy encrypts the tokens into its session cookie and redirects back to `/api/whoami`.
+6. On the next request, ext_authz asks oauth2-proxy again: the session is valid, so it answers 200 with
+   `X-Auth-Request-User`, `X-Auth-Request-Email` and `X-Auth-Request-Access-Token`.
+7. The gateway adds those headers, removes the cookie and routes the request to Spring Boot.
+8. Spring's sidecar validates the access token from `X-Auth-Request-Access-Token` (audience
+   `spring-api`), checks the roles and overwrites the user/email headers from the verified token.
+
+oauth2-proxy refreshes the access token every 4 minutes (`--cookie-refresh=4m`) while the Keycloak
+session is alive.
 
 Compare `/api/headers` through:
 - `app.localhost` after browser login
@@ -247,29 +267,40 @@ That makes the oauth2-proxy session-cookie model vs direct JWT model visible.
 
 ## Istio JWT flow
 
-The ingress gateway has:
+The checks are split between the ingress gateway and each app's sidecar.
 
-- `RequestAuthentication`: validates JWT signature via Keycloak JWKS and checks issuer.
-- `AuthorizationPolicy`: decides which paths/claims are allowed.
+Ingress gateway (`k8s/istio/ingress-authorization.yaml`):
 
-Current rules:
+- `RequestAuthentication` `demo-jwt-validation`: validates the JWT signature (Keycloak JWKS), issuer and
+  expiry. No audience check here.
+- `AuthorizationPolicy` `oauth2-external-auth` (CUSTOM): sends app.localhost requests to oauth2-proxy.
+- `AuthorizationPolicy` `ingress-authorization` (ALLOW): keycloak.localhost and app.localhost are allowed
+  (app.localhost is protected by the CUSTOM policy); on api.localhost, `GET /api/public` is open and
+  everything else listed needs a valid token (`requestPrincipals: ["*"]`).
+
+Spring sidecar (`k8s/app/auth-app.yaml`): token audience must contain `spring-api`, then:
 
 - `/api/public`: anonymous allowed.
-- `/api/user`, `/api/whoami`, `/api/headers`: any valid JWT.
-- `/api/admin`: valid JWT plus `admin` in `realm_access.roles`.
-- `/reports` (GET, POST): any valid JWT at the ingress. The reports sidecar then requires
-  `aud: reports-api`, `viewer` in `resource_access.reports-api.roles` for GET and `editor` for POST
-  (`k8s/reports/auth-reports.yaml`).
+- `/api/user`, `/api/whoami`: valid JWT plus `user` in `realm_access.roles`.
+- `/api/headers`: valid JWT plus `developer`.
+- `/api/admin`: valid JWT plus `admin`.
+
+Reports sidecar (`k8s/reports/auth-reports.yaml`): token audience must contain `reports-api`, then
+`viewer` in `resource_access.reports-api.roles` for `GET /reports` and `editor` for `POST /reports`.
 
 In the browser, `app.localhost/reports` works too: oauth2-proxy asks Keycloak for the `reports`
 scope at login, and the reports sidecar reads the token from `X-Auth-Request-Access-Token`.
 
 On `api.localhost` there is no ext_authz, so nothing would overwrite an `X-Auth-Request-*` header a
 client sends itself. The `api.localhost` routes therefore remove those headers
-(`k8s/app/app.yaml`); on `app.localhost` ext_authz overwrites them with OAuth2-Proxy's answer.
+(`k8s/app/app.yaml`), and the sidecars write `x-auth-request-user` / `x-auth-request-email` from the
+verified token (`outputClaimToHeaders`).
 
 A token without `aud: reports-api` is rejected by the reports sidecar with
 `403 Audiences in Jwt are not allowed`. Envoy answers a wrong audience with 403, not 401.
+
+Status codes in short: `302` = no browser session (oauth2-proxy), `401` = a token was sent but is
+invalid, `403` = a rule said no (missing token, wrong audience, or missing role).
 
 This deliberately separates authentication (is the JWT valid?) from authorization
 (is this identity allowed to call this endpoint?).
@@ -277,6 +308,7 @@ This deliberately separates authentication (is the JWT valid?) from authorizatio
 ## Inspecting the sidecars
 
 The `identity`, `spring-api` and `reports-api` namespaces have sidecar injection enabled.
+In `identity`, only Keycloak may connect to PostgreSQL (`k8s/keycloak/postgres-authorization.yaml`).
 
 ```bash
 kubectl get pods -n identity

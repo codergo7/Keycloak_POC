@@ -36,7 +36,7 @@ spec: { mtls: { mode: STRICT } }
 | --- | --- | --- | --- | --- |
 | keycloak | 8080 | ingress gateway | `cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account` | browser login, admin console, `make token-*` (keycloak.localhost) |
 | keycloak | 8080 | oauth2-proxy | `cluster.local/ns/identity/sa/oauth2-proxy` | `--redeem-url`, `--oidc-jwks-url`, `--profile-url` use keycloak.identity.svc |
-| keycloak | 8080 | istiod | none: istiod has no sidecar, so it calls in plaintext | JWKS fetch for both RequestAuthentications |
+| keycloak | 8080 | istiod | none: istiod has no sidecar, so it calls in plaintext | JWKS fetch for every RequestAuthentication (gateway, spring-api, reports-api) |
 | oauth2-proxy | 4180 | ingress gateway | `cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account` | ext_authz check and the `/oauth2/*` routes |
 | postgres | 5432 | keycloak | `cluster.local/ns/identity/sa/keycloak` | already done (`k8s/keycloak/postgres-authorization.yaml`) |
 

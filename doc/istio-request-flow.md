@@ -8,7 +8,7 @@ Contents
 
 1. Big picture: which resource becomes which Envoy filter
 2. Order of evaluation at the ingress gateway
-3. Order of evaluation at the Spring sidecar
+3. Order of evaluation at the app sidecars (Spring, reports API)
 4. Algorithm of each step
 5. Response path
 6. End-to-end flows (browser, API)
@@ -32,6 +32,8 @@ configuration and pushes it to the ingress gateway and to every sidecar.
 | AuthorizationPolicy `ingress-authorization` (ALLOW) | `rbac` filter | ingress gateway | `k8s/istio/ingress-authorization.yaml` |
 | RequestAuthentication `keycloak-jwt` | `jwt_authn` filter | Spring sidecar | `k8s/app/auth-app.yaml` |
 | AuthorizationPolicy `spring-workload-authorization` (ALLOW) | `rbac` filter | Spring sidecar | `k8s/app/auth-app.yaml` |
+| RequestAuthentication `reports-jwt` | `jwt_authn` filter | reports API sidecar | `k8s/reports/auth-reports.yaml` |
+| AuthorizationPolicy `reports-authorization` (ALLOW) | `rbac` filter | reports API sidecar | `k8s/reports/auth-reports.yaml` |
 
 A request from outside therefore passes **two** Envoy proxies, each with its
 own chain of checks:
@@ -47,14 +49,14 @@ kind node port 30080  ──►  istio-ingressgateway Service :80  ──►  ga
 │ Gateway → VirtualService route → CUSTOM authz (oauth2-proxy) →          │
 │ RequestAuthentication → ALLOW AuthorizationPolicy → router              │
 └──────────────────────────────────────────────────────────────────────────┘
-     │  to the Spring pod
+     │  to the Spring pod (or the reports API pod for /reports)
      ▼
-┌──────────────────────── SPRING SIDECAR (Envoy) ─────────────────────────┐
+┌──────────────────────── APP SIDECAR (Envoy) ────────────────────────────┐
 │ RequestAuthentication → ALLOW AuthorizationPolicy → router              │
 └──────────────────────────────────────────────────────────────────────────┘
      │  plain HTTP on localhost
      ▼
-Spring Boot app :8080
+Spring Boot app :8080   /   FastAPI reports API :8080
 ```
 
 
@@ -147,7 +149,10 @@ The full decision sequence at the gateway:
 ```
 
 
-## 3. Order of evaluation at the Spring sidecar
+## 3. Order of evaluation at the app sidecars
+
+The Spring sidecar is shown here. The reports API sidecar has the same chain, with
+`reports-jwt` (audience `reports-api`) and `reports-authorization` (reports-api client roles).
 
 HTTP filter chain of the sidecar's inbound listener for port 8080:
 
@@ -171,8 +176,8 @@ envoy.filters.http.router              ◄── forwards to the app on localhos
                      │ none          │ valid           │ invalid / wrong audience
                      ▼               ▼                 ▼
                 no principal    principal +        401 "Jwt verification fails"
-                     │          claims available   / "Audiences in Jwt are not
-                     │               │              allowed"          STOP
+                     │          claims available   / 403 "Audiences in Jwt are
+                     │               │              not allowed"      STOP
                      ▼               ▼
                    ┌──────────────────────────────────────┐
               [2]  │ ALLOW policy spring-workload-         │
@@ -361,24 +366,28 @@ that has no token. Requiring a token is the job of an AuthorizationPolicy
                                                                       ▼           ▼
                                                               401 "Jwt is   principal = iss/sub
                                                               expired" /    claims available as
-                                                              "Audiences    request.auth.claims[...]
-                                                              in Jwt are    token kept in header
-                                                              not allowed"  (forwardOriginalToken)
+                                                              403 "Audi-    request.auth.claims[...]
+                                                              ences in Jwt  token kept in header
+                                                              are not       (forwardOriginalToken)
+                                                              allowed"
 ```
 
-The two RequestAuthentications in this repo:
+The three RequestAuthentications in this repo:
 
-| | `istio-system/demo-jwt-validation` | `spring-api/keycloak-jwt` |
-|---|---|---|
-| Applies to | ingress gateway (`app: istio-ingressgateway`) | Spring sidecar (`app: spring-app`) |
-| Issuers | realms `demo` and `master` | realm `demo` |
-| Audience check | none | must contain `spring-api` |
-| Token read from | `Authorization: Bearer` (default) | `Authorization: Bearer` **and** `X-Auth-Request-Access-Token` |
-| Used by | `requestPrincipals` in `ingress-authorization` | `requestPrincipals` and `request.auth.claims[realm_access][roles]` in `spring-workload-authorization` |
+| | `istio-system/demo-jwt-validation` | `spring-api/keycloak-jwt` | `reports-api/reports-jwt` |
+|---|---|---|---|
+| Applies to | ingress gateway (`app: istio-ingressgateway`) | Spring sidecar (`app: spring-app`) | reports API sidecar (`app: reports-api`) |
+| Issuers | realms `demo` and `master` | realm `demo` | realm `demo` |
+| Audience check | none | must contain `spring-api` | must contain `reports-api` |
+| Token read from | `Authorization: Bearer` (default) | `Authorization: Bearer` **and** `X-Auth-Request-Access-Token` | same as Spring |
+| Writes headers | — | `x-auth-request-user` (sub), `x-auth-request-email` (`outputClaimToHeaders`) | same as Spring |
+| Used by | `requestPrincipals` in `ingress-authorization` | `requestPrincipals` and `request.auth.claims[realm_access][roles]` in `spring-workload-authorization` | `requestPrincipals` and `request.auth.claims[resource_access][reports-api][roles]` in `reports-authorization` |
 
 The second header is what makes browser requests work: oauth2-proxy's access
 token arrives at the sidecar as `X-Auth-Request-Access-Token`, the sidecar
 validates it, and the role claims become usable in the AuthorizationPolicy.
+`outputClaimToHeaders` overwrites any identity header a client sent with the
+values from the verified token, so the apps can trust them.
 
 ### 4.6 ALLOW policy `ingress-authorization` (gateway)
 
@@ -391,10 +400,15 @@ rules ([D] in 4.3):
 | 2 | any request to `app.localhost` (protected by the CUSTOM policy instead) | no |
 | 3 | `GET /api/public` on `api.localhost` | no |
 | 4 | `GET /api/user`, `/api/whoami`, `/api/headers`, `/api/admin` on `api.localhost` | yes (`requestPrincipals: ["*"]`) |
+| 5 | `GET`, `POST /reports` on `api.localhost` | yes (`requestPrincipals: ["*"]`) |
+
+Roles are not checked here: the sidecars do that (4.7).
 
 Anything else, e.g. `api.localhost/api/internal` from outside, gets 403 at the gateway.
 
-### 4.7 ALLOW policy `spring-workload-authorization` (sidecar)
+### 4.7 ALLOW policies in the sidecars
+
+ALLOW policy `spring-workload-authorization` (Spring sidecar):
 
 | Path (GET) | Rule |
 |---|---|
@@ -403,6 +417,13 @@ Anything else, e.g. `api.localhost/api/internal` from outside, gets 403 at the g
 | `/api/headers` | valid JWT **and** realm role `developer` |
 | `/api/admin` | valid JWT **and** realm role `admin` |
 | anything else (e.g. `/`) | no rule matches → 403 |
+
+ALLOW policy `reports-authorization` (reports API sidecar):
+
+| Path | Rule |
+|---|---|
+| `GET /reports` | valid JWT (audience `reports-api`) **and** client role `viewer` of `reports-api` |
+| `POST /reports` | valid JWT **and** client role `editor` (a composite role that contains `viewer`) |
 
 ### 4.7b ALLOW policy `postgres-allow-keycloak` (Postgres sidecar, TCP)
 
@@ -509,6 +530,7 @@ Browser ── GET app.localhost/api/whoami  Cookie: _oauth2_proxy=... ──►
 Spring sidecar
   [1] jwt_authn reads X-Auth-Request-Access-Token → valid, aud spring-api
   [2] ALLOW: /api/whoami + role "user" → ok
+  jwt_authn has overwritten x-auth-request-user/email from the verified token
 Spring app sees x-auth-request-user/email and the token header, but no cookie.
 ◄── 200 JSON
 ```
