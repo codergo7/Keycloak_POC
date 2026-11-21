@@ -10,7 +10,7 @@ Authorization code flow ( maybe including Istio)
 
 JWT, session_cookies, claim scopes.
 
-AuthorizonPolicy, RequestAuthentication, PeerAuthentication (maybe)
+AuthorizonPolicy, RequestAuthentication
 
 
 Give the theory and story of the POC 

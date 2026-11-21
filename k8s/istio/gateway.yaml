@@ -15,7 +15,7 @@ spec:
         - keycloak.localhost
         - app.localhost
         - api.localhost
-#        - keycloak.iam.svc.cluster.local
+#        - keycloak.identity.svc.cluster.local
 
 
 

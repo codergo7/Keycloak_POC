@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-USERNAME="${1:?Usage: $0 <username> <password>}"
-PASSWORD="${2:?Usage: $0 <username> <password>}"
+USERNAME="${1:?Usage: $0 <username> <password> [extra scopes]}"
+PASSWORD="${2:?Usage: $0 <username> <password> [extra scopes]}"
+# Optional extra scopes, e.g. "reports" to get aud reports-api
+EXTRA_SCOPE="${3:-}"
 
-TOKEN="$(./scripts/get-token.sh "$USERNAME" "$PASSWORD")"
+TOKEN="$(./scripts/get-token.sh "$USERNAME" "$PASSWORD" "$EXTRA_SCOPE")"
 
 if [[ -z "$TOKEN" ]]; then
   echo "Failed to obtain token for $USERNAME" >&2

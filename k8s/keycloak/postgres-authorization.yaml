@@ -1,0 +1,27 @@
+# Only Keycloak may connect to Postgres.
+#
+# Without any policy, every pod could log in to Postgres: pods in other namespaces,
+# OAuth2-Proxy in the same namespace, and even pods outside the mesh over plaintext.
+# An ALLOW policy turns that around: anything not listed here is denied.
+#
+# The principal comes from the caller's mTLS certificate (its service account), not
+# from a token. Plaintext callers have no certificate, so they have no principal and
+# are denied too. Postgres is plain TCP, so Istio uses Envoy's network rbac filter:
+# only source identities, namespaces, IPs and ports can be matched, no paths or methods.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: postgres-allow-keycloak
+  namespace: identity
+spec:
+  selector:
+    matchLabels:
+      app: postgres
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/identity/sa/keycloak"]
+      to:
+        - operation:
+            ports: ["5432"]

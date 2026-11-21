@@ -3,7 +3,6 @@ set -euo pipefail
 
 API_URL="${API_URL:-http://localhost:8080}"
 APP_URL="${APP_URL:-http://localhost:8080}"
-SPRING_INTERNAL_URL="http://spring-app.demo.svc.cluster.local:8080/api/internal"
 
 PASSED=0
 FAILED=0
@@ -61,9 +60,9 @@ echo "  • Public access"
 echo "  • JWT authentication"
 echo "  • JWT validation failure"
 echo "  • Role-based authorization"
+echo "  • Audience and client-role authorization (reports API)"
 echo "  • OAuth2-Proxy browser redirect"
-echo "  • Istio service-to-service mTLS"
-echo "  • Kubernetes ServiceAccount authorization"
+echo "  • Database access limited to Keycloak"
 
 # ===========================================================================
 # 1. PUBLIC ENDPOINT
@@ -214,10 +213,108 @@ else
 fi
 
 # ===========================================================================
-# 8. OAUTH2-PROXY BROWSER FLOW
+# 8. AUDIENCE — REPORTS API
 # ===========================================================================
 
-section "8. Browser authentication — OAuth2-Proxy redirect"
+section "8. Audience — reports API needs aud reports-api"
+
+echo "Scenario:"
+echo "  Bob asks for a token without scope=reports."
+echo "  The token is valid, but its aud does not contain reports-api."
+echo "  The reports sidecar's RequestAuthentication rejects it."
+echo "  Envoy answers a wrong audience with 403 (not 401)."
+echo
+
+if BOB="$(./scripts/get-token.sh bob bob)" && [[ -n "$BOB" ]]; then
+  BODY="$(curl -sS -w ' HTTP %{http_code}' \
+    -H 'Host: api.localhost' \
+    -H "Authorization: Bearer ${BOB}" \
+    "${API_URL}/reports")"
+  if [[ "$BODY" == "Audiences in Jwt are not allowed HTTP 403" ]]; then
+    pass "Bob without scope=reports rejected by the reports API → $BODY"
+  else
+    fail "Bob without scope=reports → expected 'Audiences in Jwt are not allowed HTTP 403', got '$BODY'"
+  fi
+else
+  fail "Could not obtain Bob access token"
+fi
+
+# ===========================================================================
+# 9. CLIENT ROLES — REPORTS API
+# ===========================================================================
+
+section "9. Client roles — reports-api viewer and editor"
+
+echo "Scenario:"
+echo "  Tokens are requested with scope=reports (aud reports-api)."
+echo "  Bob is in /finance, which gives the reports-api viewer role."
+echo "  Creating a report needs the editor role (/finance/managers)."
+echo "  Alice has realm roles only, so the reports API denies her."
+echo
+
+if BOB_R="$(./scripts/get-token.sh bob bob reports)" && [[ -n "$BOB_R" ]]; then
+  expect_code \
+    "Bob (viewer) can list reports" \
+    "200" \
+    -H 'Host: api.localhost' \
+    -H "Authorization: Bearer ${BOB_R}" \
+    "${API_URL}/reports"
+
+  expect_code \
+    "Bob (viewer) cannot create a report" \
+    "403" \
+    -X POST \
+    -H 'Host: api.localhost' \
+    -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer ${BOB_R}" \
+    -d '{"title":"smoke"}' \
+    "${API_URL}/reports"
+else
+  fail "Could not obtain Bob token with scope=reports"
+fi
+
+if ALICE_R="$(./scripts/get-token.sh alice alice reports)" && [[ -n "$ALICE_R" ]]; then
+  expect_code \
+    "Alice (no reports-api role) denied by the reports API" \
+    "403" \
+    -H 'Host: api.localhost' \
+    -H "Authorization: Bearer ${ALICE_R}" \
+    "${API_URL}/reports"
+else
+  fail "Could not obtain Alice token with scope=reports"
+fi
+
+# ===========================================================================
+# 10. SPOOFED IDENTITY HEADER
+# ===========================================================================
+
+section "10. Trust boundary — client-sent identity headers are removed"
+
+echo "Scenario:"
+echo "  Alice sends a valid token plus X-Auth-Request-User: admin to api.localhost."
+echo "  The route removes it, and the sidecar writes the real user ID from the token."
+echo
+
+if [[ -n "$ALICE" ]]; then
+  SPOOF_USER="$(curl -sS \
+    -H 'Host: api.localhost' \
+    -H "Authorization: Bearer ${ALICE}" \
+    -H 'X-Auth-Request-User: admin' \
+    "${API_URL}/api/whoami" | jq -r .xAuthRequestUser)"
+  if [[ -n "$SPOOF_USER" && "$SPOOF_USER" != "null" && "$SPOOF_USER" != "admin" ]]; then
+    pass "Spoofed X-Auth-Request-User replaced by the token subject ($SPOOF_USER)"
+  else
+    fail "Spoofed X-Auth-Request-User reached Spring as '$SPOOF_USER'"
+  fi
+else
+  fail "Spoofed header test skipped because Alice token was unavailable"
+fi
+
+# ===========================================================================
+# 11. OAUTH2-PROXY BROWSER FLOW
+# ===========================================================================
+
+section "11. Browser authentication — OAuth2-Proxy redirect"
 
 echo "Scenario:"
 echo "  Browser has no OAuth2-Proxy session."
@@ -232,6 +329,7 @@ curl -sS \
   -D "$HEADERS" \
   -o /dev/null \
   -H 'Host: app.localhost' \
+  -A 'Mozilla/5.0' \
   "${APP_URL}/"
 
 STATUS="$(awk 'NR==1 {print $2}' "$HEADERS" | tr -d '\r')"
@@ -252,111 +350,29 @@ else
 fi
 
 # ===========================================================================
-# 9. SERVICE A → SPRING
+# 12. DATABASE ACCESS — ONLY KEYCLOAK
 # ===========================================================================
 
-section "9. Service-to-service — authorized workload"
+section "12. Database access — only Keycloak can reach Postgres"
 
 echo "Scenario:"
-echo "  service-a"
-echo "      ↓"
-echo "  Istio mTLS"
-echo "      ↓"
-echo "  ServiceAccount: service-a/service-a"
-echo "      ↓"
-echo "  AuthorizationPolicy"
-echo "      ↓"
-echo "  /api/internal"
+echo "  spring-app (another workload in the mesh) opens a TCP connection to Postgres"
+echo "  and sends a Postgres SSLRequest. postgres-allow-keycloak allows only"
+echo "  Keycloak's identity, so Envoy closes the connection without an answer."
+echo "  Keycloak itself still works (tokens were issued in section 3)."
 echo
 
-SERVICE_A_CODE="$(
-  kubectl exec \
-    -n service-a \
-    deploy/service-a \
-    -c service-a \
-    -- \
-    curl -sS -o /dev/null -w '%{http_code}' \
-    "$SPRING_INTERNAL_URL" 2>/dev/null
-)"
+# Postgres answers an SSLRequest (8 bytes) with a single byte, 'N' or 'S'.
+PG_REPLY="$(kubectl -n spring-api exec deploy/spring-app -c app -- bash -c \
+  'timeout 4 bash -c "exec 3<>/dev/tcp/postgres.identity.svc.cluster.local/5432 && printf \"\x00\x00\x00\x08\x04\xd2\x16\x2f\" >&3 && head -c1 <&3"' 2>/dev/null || true)"
 
-if [[ "$SERVICE_A_CODE" == "200" ]]; then
-  pass "service-a/service-a can access /api/internal → HTTP 200"
+if [[ -z "$PG_REPLY" && -n "$ALICE" ]]; then
+  pass "Postgres refuses spring-app; Keycloak still issues tokens"
+elif [[ -n "$PG_REPLY" ]]; then
+  fail "spring-app reached Postgres (reply '$PG_REPLY'); is postgres-allow-keycloak applied?"
 else
-  fail "service-a/service-a expected HTTP 200, got HTTP ${SERVICE_A_CODE}"
+  fail "Postgres check skipped because Alice token was unavailable"
 fi
-
-# ===========================================================================
-# 10. UNAUTHORIZED WORKLOAD
-# ===========================================================================
-
-section "10. Service-to-service — unauthorized ServiceAccount"
-
-echo "Creating temporary bad-client..."
-echo
-echo "Identity:"
-echo "  namespace:      service-a"
-echo "  ServiceAccount: default"
-echo
-echo "Expected:"
-echo "  mTLS authentication succeeds"
-echo "  workload authorization fails"
-echo "  → HTTP 403"
-echo
-
-BAD_CLIENT="smoke-bad-client"
-
-kubectl delete pod "$BAD_CLIENT" \
-  -n service-a \
-  --ignore-not-found=true \
-  --wait=true >/dev/null
-
-kubectl run "$BAD_CLIENT" \
-  -n service-a \
-  --image=curlimages/curl:8.12.1 \
-  --restart=Never \
-  --command -- sleep 3600 >/dev/null
-
-echo "Waiting for bad-client and its Istio sidecar..."
-
-if kubectl wait \
-  -n service-a \
-  --for=condition=Ready \
-  "pod/${BAD_CLIENT}" \
-  --timeout=90s >/dev/null; then
-
-  BAD_SA="$(
-    kubectl get pod "$BAD_CLIENT" \
-      -n service-a \
-      -o jsonpath='{.spec.serviceAccountName}'
-  )"
-
-  echo "Detected ServiceAccount: ${BAD_SA}"
-
-  BAD_CODE="$(
-    kubectl exec \
-      -n service-a \
-      "$BAD_CLIENT" \
-      -c "$BAD_CLIENT" \
-      -- \
-      curl -sS -o /dev/null -w '%{http_code}' \
-      "$SPRING_INTERNAL_URL" 2>/dev/null || true
-  )"
-
-  if [[ "$BAD_SA" == "default" && "$BAD_CODE" == "403" ]]; then
-    pass "service-a/default is denied access to /api/internal → HTTP 403"
-  else
-    fail "Unauthorized workload expected HTTP 403; SA=${BAD_SA}, HTTP=${BAD_CODE}"
-  fi
-else
-  fail "bad-client did not become Ready"
-fi
-
-echo "Removing temporary bad-client..."
-
-kubectl delete pod "$BAD_CLIENT" \
-  -n service-a \
-  --ignore-not-found=true \
-  --wait=false >/dev/null
 
 # ===========================================================================
 # SUMMARY
@@ -381,9 +397,9 @@ if [[ "$FAILED" -eq 0 ]]; then
   echo "               ✓ invalid JWT rejection"
   echo "               ✓ role authorization"
   echo
-  echo "  Service A → Istio mTLS → AuthorizationPolicy → Spring"
-  echo "               ✓ workload authentication"
-  echo "               ✓ ServiceAccount authorization"
+  echo "  API → RequestAuthentication (aud) → AuthorizationPolicy (client roles) → FastAPI"
+  echo "               ✓ audience check"
+  echo "               ✓ client-role authorization"
   echo
   exit 0
 else

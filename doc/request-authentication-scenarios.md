@@ -43,6 +43,14 @@ Request reaches Istio Ingress
 
 RequestAuthentication authenticates a JWT. It does not, by itself, require authentication or decide whether the authenticated identity is allowed to access an endpoint.
 
+In this POC there are three RequestAuthentications, each paired with an AuthorizationPolicy:
+
+- ingress gateway (`demo-jwt-validation`): checks issuer, signature and expiry. Its AuthorizationPolicy only requires that a valid token exists.
+- Spring sidecar (`keycloak-jwt`): checks the same token again, plus the audience `spring-api`. Its AuthorizationPolicy checks the realm roles.
+- reports API sidecar (`reports-jwt`): audience `reports-api`. Its AuthorizationPolicy checks the reports-api client roles.
+
+So a request to `api.localhost` passes two pairs: the gateway decides "is there a valid token?", the sidecar decides "is it meant for this app, and do the roles allow this path?".
+
 
 1. No JWT at all
 
@@ -195,7 +203,7 @@ Jwt verification fails
 
 For example:
 
-TOKEN=$(./scripts/get-token.sh alice)
+TOKEN=$(./scripts/get-token.sh alice alice)
 
 curl \
   -H "Authorization: Bearer $TOKEN" \
@@ -210,46 +218,29 @@ Client
  ▼
 Ingress Envoy
  │
+ ├── RequestAuthentication
+ │     issuer ✓  signature ✓  expiration ✓  → VALID
+ │     principal + claims available
+ │
+ ├── AuthorizationPolicy
+ │     requestPrincipals: ["*"]  → MATCH
  ▼
-RequestAuthentication
+Spring sidecar (Envoy)
  │
- ├── JWT exists
+ ├── RequestAuthentication
+ │     same checks + aud contains spring-api ✓
+ │     claims available:
+ │       preferred_username = alice
+ │       groups = [...]
+ │       realm_access.roles = [developer, user]
  │
- ├── issuer ✓
- │
- ├── signature ✓
- │
- ├── expiration ✓
- │
- └── VALID
- │
+ ├── AuthorizationPolicy
+ │     /api/user needs realm role "user" → MATCH
  ▼
-Authenticated identity created
- │
- ├── request.auth.principal
- │
- └── claims available:
- │
- │   preferred_username = alice
- │   groups = [...]
- │   realm_access.roles = [...]
- │   aud = spring-api
+Spring
  │
  ▼
-AuthorizationPolicy
- │
- │ requestPrincipals: ["*"]
- │
- └── MATCH
-      │
-      ▼
-     ALLOW
-      │
-      ▼
-    Spring
-      │
-      ▼
-     200
+200
 
 That's your:
 
@@ -272,29 +263,22 @@ Alice
  │
  │ Valid JWT
  ▼
-RequestAuthentication
+Ingress Envoy
  │
- │ signature ✓
- │ issuer ✓
- │ expiration ✓
- │
+ │ token valid, principal exists → let through
  ▼
-AUTHENTICATED ✓
+Spring sidecar
  │
- │ roles:
- │ developer
- │ premium
- │ user
+ ├── RequestAuthentication
+ │     signature ✓  issuer ✓  expiration ✓  aud spring-api ✓
+ │     AUTHENTICATED ✓
+ │     roles: developer, user
+ │
+ ├── AuthorizationPolicy
+ │     Requirement: realm_access.roles contains "admin"
+ │     NO MATCH
  ▼
-AuthorizationPolicy
- │
- │ Requirement:
- │ realm_access.roles
- │ contains "admin"
- │
- │ NO MATCH
- ▼
-403 Forbidden
+403 Forbidden (from the sidecar; Spring never sees the request)
 
 This is probably the best example for explaining:
 
@@ -313,21 +297,17 @@ Now:
 Admin JWT
      │
      ▼
-RequestAuthentication
+Ingress Envoy: token valid → let through
      │
-     │ JWT valid
      ▼
-Authenticated
+Spring sidecar
      │
+     │ RequestAuthentication: JWT valid, aud spring-api
      │ realm_access.roles:
      │ - user
      │ - admin
-     ▼
-AuthorizationPolicy
      │
-     │ requires admin
-     │
-     │ MATCH ✓
+     │ AuthorizationPolicy: requires admin → MATCH ✓
      ▼
 Spring
      │
@@ -342,8 +322,29 @@ Therefore:
 
 Authentication succeeds in both cases.
 
-The difference is authorization
+The difference is authorization.
 
+
+6b. Valid JWT, wrong audience
+
+bob's token without `scope=reports` has `aud: spring-api` only. It passes the gateway
+(valid token), but the reports API sidecar requires `aud: reports-api`:
+
+```bash
+TOKEN=$(./scripts/get-token.sh bob bob)
+curl -H "Authorization: Bearer $TOKEN" http://api.localhost:8080/reports
+```
+
+Client ──► Ingress (valid token ✓) ──► reports sidecar
+                                         │
+                                         │ RequestAuthentication:
+                                         │ aud does not contain reports-api
+                                         ▼
+                                       403 Audiences in Jwt are not allowed
+
+Envoy answers a wrong audience with 403, not 401: the token is genuine, it is just not meant
+for this API. With `./scripts/get-token.sh bob bob reports` the audience matches, and the
+reports-api client roles decide (viewer: GET yes, POST no).
 
 
 7. Browser → oauth2-proxy with no session
@@ -362,30 +363,14 @@ Browser
  │
  │ GET app.localhost
  ▼
-Istio Ingress
+Ingress Envoy
  │
+ ├── ext_authz (AuthorizationPolicy CUSTOM, runs first)
+ │     asks OAuth2-Proxy: session cookie?
+ │     └── NO → OAuth2-Proxy answers 302
  ▼
-RequestAuthentication
- │
- │ no JWT
- │
- │ nothing to validate
- ▼
-AuthorizationPolicy
- │
- │ app.localhost allowed
- ▼
-OAuth2-Proxy
- │
- │ session cookie?
- │
- └── NO
-      │
-      ▼
-302 Redirect
-      │
-      ▼
-Keycloak /auth
+302 Redirect → Keycloak /auth
+(RequestAuthentication and the ALLOW policy never run: ext_authz already answered)
 
 Therefore:
 
@@ -403,28 +388,29 @@ Browser
  │ Cookie:
  │ _oauth2_proxy=...
  ▼
-Ingress
+Ingress Envoy
  │
+ ├── ext_authz → OAuth2-Proxy
+ │     session valid? ✓  → 200 + X-Auth-Request-User/Email/Access-Token
+ │     the gateway adds these headers to the request
+ │
+ ├── RequestAuthentication
+ │     no Authorization: Bearer from a browser → nothing to validate
+ │
+ ├── AuthorizationPolicy ALLOW
+ │     app.localhost allowed (protected by ext_authz)
+ │
+ ├── router: removes the cookie
  ▼
-RequestAuthentication
+Spring sidecar
  │
- │ Usually no Bearer JWT
- │ from browser
- │
- │ nothing to validate
- ▼
-AuthorizationPolicy
- │
- │ app.localhost allowed
- ▼
-OAuth2-Proxy
- │
- │ session valid? ✓
- ▼
-Forward request
- │
+ ├── RequestAuthentication reads X-Auth-Request-Access-Token
+ │     valid, aud spring-api ✓
+ ├── AuthorizationPolicy checks the roles
  ▼
 Spring
+
+OAuth2-Proxy is not in the request path: it only answers the check (`--upstream=static://200`).
 
 Again:
 
@@ -445,193 +431,17 @@ Browser
  │
  │ invalid session cookie
  ▼
-Ingress
+Ingress Envoy
  │
+ ├── ext_authz → OAuth2-Proxy
+ │     cannot decrypt / verify the cookie → INVALID
+ │     answers 302
  ▼
-RequestAuthentication
- │
- │ doesn't care about
- │ oauth2-proxy cookie
- ▼
-AuthorizationPolicy
- │
- │ app.localhost allowed
- ▼
-OAuth2-Proxy
- │
- │ validate session
- │
- └── INVALID
-      │
-      ▼
 Keycloak login / authentication flow
 
+RequestAuthentication doesn't care about the oauth2-proxy cookie at all.
+
 That's another good example of responsibility separation.
-
-
-10. Service A → Spring with mTLS
-
-And this is where RequestAuthentication may not be involved at all in your current internal flow.
-
-
-Your call:
-
-kubectl exec -n service-a deploy/service-a -c service-a -- \
-  curl http://spring-app.demo.svc.cluster.local:8080/api/internal
-
-
-has no JWT.
-
-Instead:
-
-Service A
- │
- ▼
-Service A Envoy
- │
- │ mTLS
- │
- │ client certificate
- ▼
-Spring Envoy
- │
- ├── PeerAuthentication
- │ │
- │ │ STRICT
- │ │
- │ └── authenticate workload
- │
- │ identity:
- │ cluster.local/ns/service-a/sa/service-a
- │
- ▼
-AuthorizationPolicy
- │
- │ serviceAccounts:
- │ │ service-a/service-a
- │
- │ MATCH
- ▼
-Spring
- │
- ▼
-200
-
-Here authentication is performed through mTLS, not JWT.
-
-So:
-
-RequestAuthentication → JWT identity
-
-PeerAuthentication    → mTLS workload identity
-
-This distinction is extremely important.
-
-
-11. Unauthorized ServiceAccount
-
-Your negative test:
-
-bad-client
-ServiceAccount: default
-
-can still successfully establish mTLS.
-
-Therefore:
-
-bad-client
- │
- ▼
-Envoy
- │
- │ mTLS
- ▼
-Spring Envoy
- │
- ├── PeerAuthentication
- │ │
- │ └── authenticated ✓
- │
- │ identity:
- │ cluster.local/ns/service-a/sa/default
- │
- ▼
-AuthorizationPolicy
- │
- │ allowed:
- │ service-a/service-a
- │
- │ identity doesn't match
- ▼
-403
-
-Again:
-
-Authenticated ✓
-Authorized   ✗
-
-
-12. Future: Service A + Keycloak JWT + mTLS
-
-This is the experiment I'd add next.
-
-Service A gets a token using:
-
-client_credentials
-
-Then:
-
-Service A
- │
- │ Authorization:
- │ Bearer <service-a JWT>
- ▼
-Service A Envoy
- │
- │ mTLS
- ▼
-Spring Envoy
- │
- ├────────────────────────────┐
- │                            │
- ▼                            ▼
-PeerAuthentication      RequestAuthentication
- │                            │
- │ authenticate               │ authenticate
- │ workload                   │ JWT
- │                            │
- ▼                            ▼
-service-a/service-a      OAuth client identity
- │                       + roles/claims
- │                            │
- └─────────────┬──────────────┘
-               ▼
-       AuthorizationPolicy
-               │
-       require BOTH
-               │
-               ▼
-             Spring
-
-Now we have two independent authenticated identities.
-
-Layer 1 — workload identity
-mTLS certificate
-
-cluster.local/ns/service-a/sa/service-a
-
-answers:
-
-Which Kubernetes workload sent this traffic?
-
-Layer 2 — OAuth identity
-Keycloak JWT
-
-answers:
-
-Which OAuth client/application identity is represented by this request, and what claims/roles does it have?
-
-And AuthorizationPolicy can use both.
 
 
 The complete picture
@@ -645,26 +455,22 @@ This is the diagram I'd put in the presentation:
                     │     Envoy     │
                     └───────┬───────┘
                             │
-             ┌──────────────┴──────────────┐
-             │                             │
-             ▼                             ▼
-     PeerAuthentication           RequestAuthentication
-             │                             │
-             │ mTLS                        │ JWT
-             │                             │
-             ▼                             ▼
-     Workload identity              Request identity
-             │                             │
-     ServiceAccount                 Keycloak subject
-     SPIFFE identity                roles
-                                    groups
-                                    claims
-             │                             │
-             └──────────────┬──────────────┘
+                            ▼
+                  RequestAuthentication
+                            │
+                            │ JWT
+                            ▼
+                    Request identity
+                            │
+                    Keycloak subject
+                    roles
+                    groups
+                    claims
+                            │
                             ▼
                   AuthorizationPolicy
                             │
-                  "Is it allowed?"
+                  "Do the claims allow it?"
                             │
                     ┌───────┴───────┐
                     │               │
@@ -681,33 +487,27 @@ Browser authentication
 Browser
    │
    ▼
-Ingress
-   │
+Ingress ── ext_authz ──► OAuth2-Proxy
+   │                       │ session missing → 302 to Keycloak login
+   │                       │ session valid   → 200 + identity headers + access token
    ▼
-OAuth2-Proxy
-   │
-   │ session missing
-   ▼
-Keycloak login
-   │
-   ▼
-OAuth2-Proxy session
+Spring sidecar (RequestAuthentication + AuthorizationPolicy on the access token)
    │
    ▼
 Spring
+
 The responsibilities to remember
 Istio / Keycloak component	Main responsibility
 Keycloak	Authenticate users/clients and issue tokens
-OAuth2-Proxy	Browser OIDC flow and session management
+OAuth2-Proxy	Browser OIDC flow and session management; answers the gateway's ext_authz check
 RequestAuthentication	Validate JWTs and expose authenticated JWT identity/claims
-PeerAuthentication	Configure/authenticate workload-to-workload mTLS
 AuthorizationPolicy	Decide whether the authenticated/request identity may access something
 VirtualService	Route traffic
 Spring Boot	Business logic and business-level authorization
 
 The shortest presentation version is:
 
-RequestAuthentication validates JWT identity. PeerAuthentication establishes workload identity through mTLS. AuthorizationPolicy consumes those identities and decides whether the request is allowed. OAuth2-Proxy handles the browser login/session flow, while Keycloak authenticates identities and issues tokens.
+RequestAuthentication validates the JWT and exposes its claims. AuthorizationPolicy decides from those claims whether the request is allowed. OAuth2-Proxy handles the browser login/session flow, while Keycloak authenticates identities and issues tokens.
 
 That separation of responsibilities is really the central architecture lesson of your whole POC.
 
